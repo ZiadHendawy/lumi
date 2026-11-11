@@ -72,7 +72,13 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 | **M1** | **Core requirements** | Memory tools, persona prompt, external API tool, tool-error handling, plus their tests and evals | M1 evals pass. Memory survives a new session. | 3–4 h | 1 |
 | **M2** | **Deep dive** | Chosen track, plus its evals and measurements | Measurable results. All earlier evals still pass. | 4–6 h | 2 |
 | **M3** | **Frontend & delight** | Final UI direction, its own look (not the stock starter), voice polish, edge cases | Distinct from a one-shot build. Smoke check passes on desktop + mobile. | 2–3 h | 2 |
-| **M4** | **Presentation** | README, `CODE_MAP.md`, write-up (API justification, deep-dive findings), demo video (also the backup demo), code walkthrough rehearsal, launch | Launched, with the repo public | 2–3 h | 2 / buffer |
+| **M4** | **Presentation** | README, `CODE_MAP.md`, write-up (API justification, deep-dive findings), **reader-facing doc tidy-up** (see below), demo video (also the backup demo), code walkthrough rehearsal, launch | Launched, with the repo public | 2–3 h | 2 / buffer |
+
+**M4 doc tidy-up (reader-facing).** The planning docs stay in the repo, because they show the plan came before the code. We don't add a second PRD next to them, since two plans drift apart. Instead:
+- Rewrite `README.md` as the front door: what Lumi is, the live URL, how it works, the deep dive, and a "How I planned this" link to the docs below.
+- Move `PROJECT_PLAN.md` and `TECH_STACK.md` into `docs/`, and fix every link to them (README, CLAUDE.md, CODE_MAP, and each other).
+- Reword the lines written for us rather than an outside reader (CLAUDE.md, CODE_MAP).
+- Close or answer every open question in the plan, so a new reader doesn't see unresolved items.
 
 **Definition of done for every milestone:** CI green + evals pass + smoke check passes + `CODE_MAP.md` updated + you can explain the change in two minutes.
 
