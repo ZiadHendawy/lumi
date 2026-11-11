@@ -17,4 +17,4 @@ Run on the **live URL** at the end of each milestone, on desktop Chrome and one 
 ## Log
 | Date | Milestone | Desktop | Mobile | Cold start | Notes |
 |---|---|---|---|---|---|
-| 2026-11-11 | M0 | ✅ Chrome: connect, greet, Q&A and interrupt all work | not tested | warm (agent already up) | ❌→✅ "Do you hear me?" got "I can only use text". Fixed in the prompt and covered by a 5-phrasing eval. Latency over 13 turns: user stops talking → reply starts 0.63–2.56 s (median ~0.9 s), LLM first token ~0.3 s, TTS first audio ~0.06 s |
+| 2026-11-11 | M0 | ✅ Chrome: connect, greet, Q&A and interrupt all work | ✅ passed | warm (agent already up) | ❌→✅ "Do you hear me?" got "I can only use text". Fixed in the prompt and covered by a 5-phrasing eval. Latency over 13 turns: user stops talking → reply starts 0.63–2.56 s (median ~0.9 s), LLM first token ~0.3 s, TTS first audio ~0.06 s |
