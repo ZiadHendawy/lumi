@@ -41,7 +41,7 @@ LiveKit Cloud ◀──▶ Agent worker (Python, LiveKit Cloud)
 | Identity | Anonymous UUID in localStorage | No login for a first-time user |
 | Frontend | Minimal Next.js app (LiveKit React hooks), Vercel | Few files, fully ours |
 | Hosting | Vercel (web) + LiveKit Cloud (agent) | Both free |
-| CI | GitHub Actions (lint + unit tests every push, evals on PR) + Vercel Git deploys | Catches regressions |
+| CI/CD | GitHub Actions (lint + unit tests every push, evals on PR, agent deploy on `main` when `agent/` changes) + Vercel Git deploys | Catches regressions. Nothing ships by hand. |
 
 **Repo layout:** `agent/` (Python, uv) and `web/` (Next.js, npm) in one repo. CI lives in `.github/workflows/ci.yml`.
 **Planned files (agent):** `agent.py` (session setup + persona), `memory.py` (SQL + `save_fact` / `forget_fact` tools), `tools.py` (external API tool), `config.py` (providers, env vars), `schema.sql`, `tests/`, `Dockerfile`.

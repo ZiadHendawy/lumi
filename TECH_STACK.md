@@ -187,7 +187,7 @@ The worker is a long-running Python process, so serverless platforms are out.
 | ✅ **Vercel Git integration (web) + GH Actions lint & tests + `lk agent deploy` (agent)** | Free. Preview URL per PR. Almost no setup. | Agent deploy is a manual CLI step |
 | GitHub Actions deploying everything | Fully automated | Setup time we don't need for a 2-day build |
 
-**Pick: Vercel Git deploys + lint and tests in GitHub Actions.** Deploy the agent with the CLI. Automate it later if time allows.
+**Pick: Vercel Git deploys (web) + GitHub Actions for lint, tests and agent deploys.** A `deploy-agent` job runs `lk agent deploy` on pushes to `main` that change `agent/`, after the agent tests pass. We added it in M0 so a pushed agent fix can't sit undeployed. It authenticates with the project API key and secret (GitHub secrets) and uses a pinned `lk` release.
 
 ---
 

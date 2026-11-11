@@ -30,5 +30,5 @@ uv run pytest -m eval  # conversation evals against the real LLM (needs GROQ_API
 Manual voice check: [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md).
 
 ## Deploy
-- **Agent:** `cd agent && lk agent create` the first time (it registers the agent and writes `livekit.toml`), then `lk agent deploy`. Secrets: `lk agent update-secrets --secrets-file .env.local`.
+- **Agent:** deploys automatically. CI runs `lk agent deploy` on every push to `main` that changes `agent/`, once the agent tests pass. Manual fallback: `cd agent && lk agent deploy`. Agent secrets (provider keys, `DATABASE_URL`) live in LiveKit Cloud: `lk agent update-secrets`.
 - **Web:** import the repo in Vercel with root directory `web/`, then set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. Every push deploys.

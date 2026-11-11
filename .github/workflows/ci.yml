@@ -54,3 +54,41 @@ jobs:
         env:
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+  # Vercel only deploys web/, so without this a pushed agent fix would never reach
+  # LiveKit Cloud. Runs on main only, after the agent's lint and tests pass, and only
+  # when something under agent/ changed in this push.
+  deploy-agent:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: agent
+    runs-on: ubuntu-latest
+    concurrency: deploy-agent # never two rollouts at once
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history, to diff against the commit before this push
+      - name: Did agent/ change?
+        id: changed
+        run: |
+          before="${{ github.event.before }}"
+          if [ "$before" = "0000000000000000000000000000000000000000" ] || ! git diff --quiet "$before" HEAD -- .; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install LiveKit CLI (pinned)
+        if: steps.changed.outputs.agent == 'true'
+        run: |
+          curl -sSL https://github.com/livekit/livekit-cli/releases/download/v2.19.2/lk_2.19.2_linux_amd64.tar.gz | tar xz -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP/lk" --version
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Deploy to LiveKit Cloud
+        if: steps.changed.outputs.agent == 'true'
+        # livekit.toml names the agent; these credentials authorize the deploy.
+        run: lk agent deploy --yes
+        env:
+          LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
+          LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}
+          LK_NO_SKILLS_PROMPT: "1"

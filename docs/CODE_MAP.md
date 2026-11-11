@@ -18,6 +18,10 @@ One paragraph per file, then the life of one voice turn. Updated every milestone
 
 **`Dockerfile`**: the image LiveKit Cloud builds, trimmed from the starter. Dependencies get their own cached layer, and model weights are baked in at build time so a cold start doesn't download them.
 
+## CI/CD (`.github/workflows/ci.yml`)
+
+One workflow with four jobs. **agent** (ruff lint and format check, unit tests against the Neon `test` branch) and **web** (typecheck and build) run on every push. **evals** runs on PRs and on demand, because it spends Groq quota. **deploy-agent** runs only on pushes to `main`, only after **agent** passes, and only if `agent/` changed (a `git diff` against the commit before the push). It then runs `lk agent deploy`. This is needed because Vercel's Git integration only deploys `web/`.
+
 ## Web (`web/`, Next.js on Vercel)
 
 **`app/api/token/route.ts`**: the only backend. It checks that the browser's anonymous id is a UUID, signs a 15-minute LiveKit token with that id as the participant identity, and puts the Lumi agent dispatch into the token's room config. The server decides the dispatch, not the client.
