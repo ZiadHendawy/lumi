@@ -1,0 +1,41 @@
+/* Bare M0 styling; the real visual direction is an M3 decision. */
+:root {
+  --bg: #fafaf7;
+  --fg: #1c1c1a;
+  --accent: #2f6f5e;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #151514;
+    --fg: #eceae4;
+    --accent: #6fbfa6;
+  }
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, sans-serif;
+}
+main {
+  min-height: 100svh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 1rem;
+  padding: 0 16px;
+  text-align: center;
+}
+button {
+  font: inherit;
+  padding: 0.75rem 1.5rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  cursor: pointer;
+}
+.status {
+  min-height: 1.5em;
+  text-transform: capitalize;
+}

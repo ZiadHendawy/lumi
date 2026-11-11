@@ -1,0 +1,5 @@
+[project]
+  subdomain = "your-project-subdomain"
+
+[agent]
+  id = "CA_your_agent_id"

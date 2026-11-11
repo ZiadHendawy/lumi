@@ -1,0 +1,43 @@
+[project]
+name = "lumi-agent"
+version = "0.1.0"
+description = "Lumi voice agent (LiveKit Agents worker)"
+requires-python = ">=3.12, <3.14"
+dependencies = [
+    "livekit-agents~=1.8",
+    "livekit-plugins-deepgram",
+    "livekit-plugins-groq",
+    "livekit-plugins-openai",
+    "livekit-plugins-silero",
+    "psycopg[binary]~=3.2",
+    "python-dotenv",
+]
+
+[dependency-groups]
+dev = ["pytest", "pytest-asyncio", "ruff"]
+
+[tool.uv]
+# Dev machine is an Intel Mac; recent onnxruntime (used by Silero VAD and the
+# turn detector) ships no x86_64 macOS wheel. This makes uv pick a version
+# that installs both here and on Linux (LiveKit Cloud).
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Evals call the real LLM (uses Groq quota), so they only run when asked: pytest -m eval
+markers = ["eval: conversation evals against the real LLM"]
+addopts = "-m 'not eval'"
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM"]
+ignore = ["E501"]
