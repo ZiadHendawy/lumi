@@ -8,8 +8,11 @@ const VoiceSession = dynamic(() => import('@/components/VoiceSession'), { ssr: f
 
 export default function Page() {
   return (
-    <main>
-      <h1>Lumi</h1>
+    <main className="app">
+      <header className="masthead">
+        <h1 className="wordmark">Lumi</h1>
+        <p className="tagline">a task board you run by voice</p>
+      </header>
       <VoiceSession />
     </main>
   );

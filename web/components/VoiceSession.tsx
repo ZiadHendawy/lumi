@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { TokenSource } from 'livekit-client';
 import { RoomAudioRenderer, SessionProvider, useAgent, useSession } from '@livekit/components-react';
+import Board from '@/components/Board';
 import { type Change, type Task, loadCachedTasks, parseBoard, saveCachedTasks } from '@/lib/board';
 import { getUserId } from '@/lib/userId';
 
@@ -82,20 +83,13 @@ export default function VoiceSession() {
   return (
     <SessionProvider session={session}>
       <RoomAudioRenderer />
-      <p className="status">{status}</p>
-      {agent.isConnected && !started && <button onClick={start}>Start talking</button>}
-      {started && !agent.isFinished && <button onClick={() => session.end()}>End</button>}
-      {/* Plain list until the board UI lands; "last seen" marks the cached copy. */}
-      {!board.live && board.tasks.length > 0 && <p>Last seen</p>}
-      <ul>
-        {board.tasks.map((task) => (
-          <li key={task.id}>
-            {task.done ? '✓ ' : ''}
-            {task.title} · {task.priority}
-            {task.target_date ? ` · ${task.target_date}` : ''}
-          </li>
-        ))}
-      </ul>
+      <Board tasks={board.tasks} change={board.change} seq={board.seq} ghost={board.ghost} live={board.live} />
+      {/* Interim controls; the lantern replaces them. */}
+      <div className="session-bar">
+        <p className="status">{status}</p>
+        {agent.isConnected && !started && <button onClick={start}>Start talking</button>}
+        {started && !agent.isFinished && <button onClick={() => session.end()}>End</button>}
+      </div>
     </SessionProvider>
   );
 }

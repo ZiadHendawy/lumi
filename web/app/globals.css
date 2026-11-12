@@ -1,41 +1,817 @@
-/* Bare M0 styling; the real visual direction is an M3 decision. */
+/* Lumi: "the lantern board".
+   A night-time board lit by one lantern (the talk button). How brightly a card is lit
+   is its priority; done tasks are put out. Dark only, on purpose: a lantern in daylight
+   has nothing to say.
+   Animations touch only transform, opacity, box-shadow and filter, so they stay smooth. */
+
 :root {
-  --bg: #fafaf7;
-  --fg: #1c1c1a;
-  --accent: #2f6f5e;
+  color-scheme: dark;
+
+  --ink: #0c0a08;
+  --paper: #f4ead9;
+  --paper-dim: rgba(244, 234, 217, 0.66);
+  --paper-faint: rgba(244, 234, 217, 0.4);
+  --line: rgba(255, 226, 190, 0.09);
+  --glass: rgba(255, 238, 214, 0.04);
+
+  --amber: #ffb547;
+  --amber-soft: rgba(255, 181, 71, 0.4);
+  --ember: #ff7442;
+  --cool: #9db0cc;
+
+  --radius: 16px;
+  --gutter: 24px;
+  --dock-space: 300px; /* room left under the board so the lantern never covers the last card */
+
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #151514;
-    --fg: #eceae4;
-    --accent: #6fbfa6;
-  }
+
+* {
+  box-sizing: border-box;
 }
+
+html {
+  scrollbar-color: rgba(255, 220, 180, 0.16) transparent;
+}
+
 body {
   margin: 0;
-  background: var(--bg);
-  color: var(--fg);
-  font-family: system-ui, sans-serif;
-}
-main {
   min-height: 100svh;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 1rem;
-  padding: 0 16px;
-  text-align: center;
+  overflow-x: clip; /* a glowing or scaling card must never cause sideways scrolling on a phone */
+  color: var(--paper);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(90% 50% at 50% -12%, rgba(150, 110, 70, 0.14), transparent 70%),
+    var(--ink);
+  background-attachment: fixed;
 }
+
+/* Vignette: the corners of the room are darker than the middle. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  background: radial-gradient(ellipse at 50% 45%, transparent 55%, rgba(0, 0, 0, 0.5) 100%);
+}
+
+/* Film grain from an inline SVG noise filter, so dark gradients don't band into stripes. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 31;
+  opacity: 0.07;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+::selection {
+  background: rgba(255, 181, 71, 0.35);
+}
+
 button {
   font: inherit;
-  padding: 0.75rem 1.5rem;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 3px;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* ---------- Page ---------- */
+
+.app {
+  position: relative;
+  z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.masthead {
+  padding: 44px 0 0;
+}
+
+.wordmark {
+  margin: 0;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100, 'opsz' 144;
+  font-size: 52px;
+  font-weight: 560;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  color: #ffdca0;
+  text-shadow:
+    0 0 28px rgba(255, 170, 70, 0.35),
+    0 0 2px rgba(255, 200, 130, 0.4);
+}
+
+.tagline {
+  margin: 10px 0 0;
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+
+/* ---------- Board ---------- */
+
+.board {
+  position: relative;
+  z-index: 1;
+  padding-bottom: var(--dock-space);
+}
+
+.board-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  margin: 28px 0 32px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
+}
+
+.board-date {
+  margin: 0;
+  white-space: nowrap;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 18px;
+  color: var(--paper-dim);
+}
+
+.board-count {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.lanes {
+  display: grid;
+  /* minmax(0, ...) lets long titles wrap instead of widening the column past the screen. */
+  grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr));
+  gap: 36px 22px;
+  align-items: start;
+}
+
+.lane-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 21px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+}
+.lane-overdue .lane-title {
+  color: #ffab8a;
+}
+.lane-someday .lane-title,
+.lane-later .lane-title {
+  color: var(--paper-dim);
+}
+
+.lane-count {
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  color: var(--paper-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.lane-cards {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+/* ---------- Cards: priority is how brightly the card is lit ---------- */
+
+.card {
+  position: relative;
+  padding: 14px 16px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: linear-gradient(180deg, rgba(255, 238, 214, 0.06), rgba(255, 238, 214, 0.02));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 14px 30px -16px rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(10px);
+  transition:
+    box-shadow 0.8s ease,
+    border-color 0.8s ease,
+    filter 1.4s ease,
+    opacity 0.8s ease;
+  /* When a change scrolls a card into view, keep it clear of the masthead and the lantern dock. */
+  scroll-margin: 96px 0 calc(var(--dock-space) - 40px);
+}
+
+/* The pool of light falling on the card from its top-left corner. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(130% 100% at 0% 0%, rgba(255, 186, 96, 0.26), transparent 62%);
+  opacity: 0;
+  transition: opacity 0.8s ease;
+}
+
+.card.prio-high {
+  border-color: rgba(255, 186, 96, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 224, 170, 0.2),
+    0 0 0 1px rgba(255, 170, 70, 0.06),
+    0 0 42px -8px rgba(255, 160, 60, 0.5),
+    0 14px 30px -16px rgba(0, 0, 0, 0.8);
+}
+.card.prio-high::before {
+  opacity: 1;
+}
+
+.card.prio-medium {
+  border-color: rgba(255, 206, 150, 0.17);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 224, 170, 0.08),
+    0 0 26px -12px rgba(255, 170, 80, 0.32),
+    0 14px 30px -16px rgba(0, 0, 0, 0.8);
+}
+.card.prio-medium::before {
+  opacity: 0.42;
+}
+
+.card.prio-low {
+  border-color: rgba(170, 190, 220, 0.08);
+  background: linear-gradient(180deg, rgba(190, 205, 230, 0.04), rgba(190, 205, 230, 0.012));
+}
+.card.prio-low .card-title {
+  color: var(--paper-dim);
+}
+
+.card-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+/* Priority is also a word, not just a glow, so it doesn't rely on colour alone. */
+.prio {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.prio-high .prio {
+  color: #ffc878;
+}
+
+/* A small flame: a rotated rounded square makes a teardrop. */
+.prio-flame {
+  width: 7px;
+  height: 7px;
+  border-radius: 50% 0 50% 50%;
+  rotate: -45deg;
+  background: var(--amber);
+}
+.prio-high .prio-flame {
+  background: #ffd27a;
+  box-shadow:
+    0 0 6px 1px rgba(255, 190, 90, 0.9),
+    0 0 14px 2px rgba(255, 150, 50, 0.5);
+}
+.prio-medium .prio-flame {
+  opacity: 0.75;
+  box-shadow: 0 0 6px rgba(255, 170, 70, 0.4);
+}
+.prio-low .prio-flame {
+  background: transparent;
+  border: 1px solid var(--cool);
+  opacity: 0.7;
+}
+
+.chip {
+  flex-shrink: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 238, 214, 0.05);
+  font-size: 12px;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.lane-overdue .chip {
+  color: #ffb79b;
+  border-color: rgba(255, 116, 66, 0.3);
+}
+
+.card-title {
+  position: relative;
+  margin: 0;
+  font-size: 16px;
+  font-weight: 550;
+  line-height: 1.32;
+  letter-spacing: -0.005em;
+  text-wrap: pretty;
+  overflow-wrap: anywhere;
+}
+
+.card-body {
+  position: relative;
+  margin: 6px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  overflow: hidden;
+}
+
+/* The cached board from the last visit is drawn cold, and warms up when the live one arrives. */
+.board.is-stale .card {
+  filter: saturate(0.3) brightness(0.72);
+}
+
+/* Done: the flame is out. */
+.card.is-done {
+  border-color: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.015);
+  box-shadow: none;
+  filter: grayscale(1) brightness(0.72);
+}
+.card.is-done::before {
+  opacity: 0;
+}
+.card.is-done .card-title {
+  color: var(--paper-faint);
+  text-decoration: line-through;
+  text-decoration-color: rgba(244, 234, 217, 0.35);
+}
+.card.is-done .prio-flame {
+  background: transparent;
+  border: 1px solid var(--paper-faint);
+  box-shadow: none;
+}
+
+/* ---------- Change animations (voice-to-screen sync) ----------
+   Board.tsx puts is-<action> on the card that just changed, and lists the changed fields
+   in data-changed. Keyframes that leave out the 100% step ease back to the card's own
+   style, so they work for any priority. */
+
+.card.is-created,
+.card.is-restored,
+.card.is-updated[data-changed~='done']:not(.is-done) {
+  animation: ignite 1.5s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+@keyframes ignite {
+  0% {
+    opacity: 0;
+    transform: translateY(10px) scale(0.9);
+    filter: brightness(1.8) blur(6px);
+    box-shadow: 0 0 0 0 rgba(255, 190, 90, 0);
+  }
+  30% {
+    opacity: 1;
+    transform: scale(1.03);
+    filter: brightness(1.2) blur(0);
+    border-color: rgba(255, 210, 140, 0.9);
+    box-shadow:
+      0 0 0 1px rgba(255, 200, 120, 0.6),
+      0 0 70px 6px rgba(255, 160, 60, 0.6);
+  }
+}
+
+.card.is-updated {
+  animation: flare 2.2s ease-out;
+}
+@keyframes flare {
+  0%,
+  20% {
+    border-color: rgba(255, 214, 150, 0.95);
+    box-shadow:
+      0 0 0 1px rgba(255, 200, 120, 0.55),
+      0 0 60px 4px rgba(255, 160, 60, 0.55);
+  }
+}
+
+/* A band of light sweeps across the card that changed. */
+.card.is-updated::after,
+.card.is-created::after,
+.card.is-restored::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(105deg, transparent 30%, rgba(255, 226, 170, 0.22) 50%, transparent 70%);
+  transform: translateX(-100%);
+  opacity: 0;
+  animation: sweep 1.3s 0.15s ease-out;
+}
+@keyframes sweep {
+  0% {
+    transform: translateX(-100%);
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(100%);
+    opacity: 1;
+  }
+}
+
+/* Only the parts that changed light up. */
+[data-changed~='priority'] .prio {
+  animation: pop 1.2s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+[data-changed~='priority'] .prio-flame {
+  animation: flame-burst 1.6s ease-out;
+}
+@keyframes pop {
+  0% {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  40% {
+    transform: scale(1.18);
+    opacity: 1;
+    filter: brightness(1.6);
+  }
+}
+@keyframes flame-burst {
+  20% {
+    box-shadow:
+      0 0 10px 3px rgba(255, 210, 120, 1),
+      0 0 28px 8px rgba(255, 150, 50, 0.7);
+  }
+}
+
+[data-changed~='target_date'] .chip {
+  animation: chip-slide 1.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes chip-slide {
+  0% {
+    transform: translateX(14px);
+    opacity: 0;
+  }
+  35% {
+    transform: none;
+    opacity: 1;
+    border-color: rgba(255, 210, 140, 0.9);
+    box-shadow: 0 0 18px rgba(255, 170, 70, 0.55);
+    filter: brightness(1.5);
+  }
+}
+
+[data-changed~='title'] .card-title,
+[data-changed~='body'] .card-body {
+  animation: shimmer 1.8s ease-out;
+}
+@keyframes shimmer {
+  0%,
+  25% {
+    text-shadow:
+      0 0 14px rgba(255, 196, 110, 0.95),
+      0 0 2px rgba(255, 220, 160, 0.9);
+    filter: brightness(1.35);
+  }
+}
+
+/* Marked done: a last flare, then the light goes out. */
+.card.is-done.is-updated {
+  animation: extinguish 1.8s ease-in both;
+}
+@keyframes extinguish {
+  0% {
+    filter: none;
+    border-color: rgba(255, 210, 140, 0.8);
+    box-shadow: 0 0 50px rgba(255, 160, 60, 0.5);
+  }
+  35% {
+    filter: brightness(1.2);
+  }
+}
+
+/* Deleted: the card cools to an ember and drifts up and away. Board.tsx removes it when
+   this animation ends (it listens for the name 'ember-away'). */
+.card.is-deleted {
+  pointer-events: none;
+  animation: ember-away 1.7s ease-in forwards;
+}
+@keyframes ember-away {
+  0% {
+    opacity: 1;
+  }
+  25% {
+    opacity: 1;
+    transform: none;
+    filter: sepia(1) saturate(3.5) hue-rotate(-18deg) brightness(0.85);
+    border-color: rgba(255, 116, 66, 0.7);
+    box-shadow: 0 0 34px rgba(255, 90, 40, 0.5);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-36px) scale(0.94);
+    filter: sepia(1) saturate(2) hue-rotate(-18deg) brightness(0.3) blur(8px);
+    box-shadow: 0 0 0 rgba(255, 90, 40, 0);
+  }
+}
+
+/* ---------- Done list ---------- */
+
+.done {
+  margin-top: 48px;
+}
+
+.done-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 2px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 19px;
+  color: var(--paper-faint);
+  transition: color 0.3s;
+}
+.done-toggle:hover {
+  color: var(--paper-dim);
+}
+
+.done-chevron {
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  rotate: -45deg;
+  transition: rotate 0.3s ease;
+}
+.done-toggle[aria-expanded='true'] .done-chevron {
+  rotate: 45deg;
+}
+
+.done-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* ---------- Empty board ---------- */
+
+.empty {
+  display: grid;
+  justify-items: center;
+  padding: 9vh 0 0;
+  text-align: center;
+}
+
+.empty-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100, 'opsz' 144;
+  font-size: clamp(36px, 7vw, 56px);
+  font-weight: 380;
+  letter-spacing: -0.025em;
+  color: var(--paper-dim);
+}
+
+.empty-hint {
+  margin: 18px 0 18px;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+
+.empty-phrases {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.empty-phrases li {
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  color: var(--paper-dim);
+  font-size: 15px;
+  animation: phrase-in 0.9s ease-out both;
+}
+.empty-phrases li:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.empty-phrases li:nth-child(3) {
+  animation-delay: 0.3s;
+}
+@keyframes phrase-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+/* ---------- Receipt toast: one line saying what just changed ---------- */
+
+.toast {
+  position: fixed;
+  top: 18px;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 196, 120, 0.25);
+  background: rgba(26, 20, 14, 0.82);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 12px 40px -12px rgba(0, 0, 0, 0.8), 0 0 30px -10px rgba(255, 160, 60, 0.35);
+  font-size: 14px;
+  color: var(--paper);
+  pointer-events: none;
+  animation: toast 4.2s ease forwards;
+}
+.toast::before {
+  content: '';
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 10px var(--amber);
+}
+/* A delete stays up longer, so there's time to say "undo". */
+.toast-deleted {
+  border-color: rgba(255, 116, 66, 0.35);
+  animation-duration: 7s;
+}
+.toast-deleted::before {
+  background: var(--ember);
+  box-shadow: 0 0 10px var(--ember);
+}
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  6%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* ---------- Interim session bar (replaced by the lantern) ---------- */
+
+.session-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 60px 16px 24px;
+  background: linear-gradient(to top, var(--ink) 60%, transparent);
+}
+.session-bar button {
+  padding: 0.7rem 1.5rem;
   border: 0;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--bg);
+  background: var(--amber);
+  color: var(--ink);
   cursor: pointer;
 }
 .status {
-  min-height: 1.5em;
+  margin: 0;
+  color: var(--paper-dim);
   text-transform: capitalize;
+}
+
+/* ---------- Phones ---------- */
+
+@media (max-width: 640px) {
+  :root {
+    --gutter: 16px;
+    --dock-space: 280px;
+  }
+  .masthead {
+    padding-top: 28px;
+  }
+  .wordmark {
+    font-size: 40px;
+  }
+  .board-meta {
+    margin: 20px 0 24px;
+  }
+  .board-date {
+    font-size: 16px;
+  }
+  .lanes {
+    gap: 28px;
+  }
+}
+
+/* ---------- Reduced motion ----------
+   Keep every highlight (the sync is the point) but drop movement: same keyframe names,
+   redefined with light and opacity only. Board.tsx still gets its 'ember-away' end event. */
+
+@media (prefers-reduced-motion: reduce) {
+  @keyframes ignite {
+    0% {
+      opacity: 0;
+    }
+    30% {
+      opacity: 1;
+      border-color: rgba(255, 210, 140, 0.9);
+      box-shadow: 0 0 60px 4px rgba(255, 160, 60, 0.55);
+    }
+  }
+  @keyframes ember-away {
+    30% {
+      opacity: 1;
+      filter: sepia(1) saturate(3) hue-rotate(-18deg) brightness(0.8);
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes pop {
+    40% {
+      filter: brightness(1.6);
+    }
+  }
+  @keyframes chip-slide {
+    35% {
+      border-color: rgba(255, 210, 140, 0.9);
+      box-shadow: 0 0 18px rgba(255, 170, 70, 0.55);
+    }
+  }
+  @keyframes toast {
+    0%,
+    100% {
+      opacity: 0;
+    }
+    6%,
+    88% {
+      opacity: 1;
+    }
+  }
+  .card::after,
+  .empty-phrases li {
+    animation: none !important;
+  }
 }
