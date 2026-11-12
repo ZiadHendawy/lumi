@@ -114,6 +114,8 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 
 **Definition of done for every milestone:** CI green + evals pass + smoke check passes + `CODE_MAP.md` updated + you can explain the change in two minutes.
 
+**How work ships (from M1 on):** one PR per related unit of change (e.g. "schema + SQL layer", "task tools + board push", "weather tool", "lantern board UI"), never one PR per milestone. Each PR carries its own tests and evals, and any CI change it needs (a new env var, a new test step), so CI grows with the code. PRs are stacked when one builds on another and get merged in order. The PR's CI run, with evals on PRs, is the evidence that the unit works on its own.
+
 **Communication:** keep a short daily log of progress and blockers. Everything runs on our own free tiers.
 
 ## Risks & mitigations
