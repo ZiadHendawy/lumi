@@ -46,7 +46,7 @@ One paragraph per file, then the contract between the agent and the browser, the
 
 **`app/layout.tsx`**: the HTML shell. Loads the two fonts (Fraunces, Inter) with `next/font`, which serves them from our own domain, and sets the dark theme colour for mobile browsers.
 
-**`app/globals.css`**: "the lantern board". Dark only. Priority is how brightly a card glows, done tasks are put out. One keyframe per kind of change (`ignite` for a new or restored card, `ember-away` for a delete, `pop` for priority, `chip-slide` for a date, `shimmer` for title and notes, `extinguish` for done), the toasts, the lantern states, a 640 px mobile layout, and gentler keyframes under `prefers-reduced-motion`. Animations only touch transform, opacity, box-shadow and filter, so they stay smooth.
+**`app/globals.css`**: "the lantern board". Dark only. Priority is how brightly a card glows, done tasks are put out. One keyframe per kind of change (`ignite` for a new or restored card, `ember-away` for a delete, `pop` for priority, `chip-slide` for a date, `shimmer` for title and notes, `extinguish` for done). Notes are never clamped: a card grows to show all of them, with line breaks kept, the toasts, the lantern states, a 640 px mobile layout, and gentler keyframes under `prefers-reduced-motion`. Animations only touch transform, opacity, box-shadow and filter, so they stay smooth.
 
 ## CI/CD (`.github/workflows/ci.yml`)
 

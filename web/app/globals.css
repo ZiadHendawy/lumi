@@ -383,11 +383,10 @@ button {
   line-height: 1.5;
   color: var(--paper-dim);
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  overflow: hidden;
+  /* No line clamp: the card grows to show every note. Notes are where a search answer
+     and its links get saved, so cutting them off hid exactly what the user asked for.
+     pre-line keeps the line break between dictated notes and an appended search answer. */
+  white-space: pre-line;
 }
 
 /* The cached board from the last visit is drawn cold, and warms up when the live one arrives. */
