@@ -427,3 +427,26 @@ async def test_weather_failure_gets_an_honest_reply(db, new_user):
             )
         )
         result.expect.no_more_events()
+
+
+# --- Reliability (2026-11-12) -------------------------------------------------
+# Found while running the M1 evals: once Groq hit its daily cap, every tool turn failed
+# on Gemini ("missing thought_signature", then timeouts), while the plain-reply fallback
+# eval above still passed. This one covers a whole task turn, stored in the DB, with
+# every Groq model down.
+
+
+@needs_db
+@pytest.mark.core
+async def test_task_turn_still_works_when_groq_fails(db, new_user, monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "invalid")
+    user = new_user()
+    async with lumi(db, user) as session:
+        result = await session.run(user_input="Add a task to call the bank")
+        result.expect.next_event().is_function_call(name="create_task")
+        result.expect.next_event().is_function_call_output(is_error=False)
+        result.expect.next_event().is_message(role="assistant")
+        result.expect.no_more_events()
+    assert [t["title"].lower() for t in await memory.list_tasks(db, user)] == [
+        "call the bank"
+    ]
