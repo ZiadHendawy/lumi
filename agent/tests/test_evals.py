@@ -215,3 +215,50 @@ async def test_deletes_a_task_by_description(db, new_user):
         result.expect.next_event().is_message(role="assistant")
         result.expect.no_more_events()
     assert await memory.get_task(db, user, board["dentist"]["id"]) is None
+
+
+# --- M1: memory across sessions ---------------------------------------------
+
+
+@needs_db
+@pytest.mark.core
+async def test_remembers_a_fact_in_a_new_session(db, new_user):
+    user = new_user()
+    async with lumi(db, user) as session:
+        result = await session.run(user_input="My favorite color is blue")
+        result.expect.contains_function_call(name="remember_fact")
+    assert "blue" in [v.lower() for v in (await memory.load_facts(db, user)).values()]
+
+    async with judge() as judge_llm, lumi(db, user) as session:
+        result = await session.run(user_input="What's my favorite color?")
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(judge_llm, intent="Says the user's favorite color is blue.")
+        )
+        result.expect.no_more_events()
+
+
+@needs_db
+async def test_a_new_value_replaces_the_old_fact(db, new_user):
+    user = new_user()
+    await memory.save_fact(db, user, "favorite_color", "blue")
+    async with lumi(db, user) as session:
+        result = await session.run(
+            user_input="Actually, my favorite color is green now"
+        )
+        args = call_args(
+            result.expect.next_event().is_function_call(name="remember_fact")
+        )
+        assert tools.fact_key(args["key"]) == "favorite_color"
+    assert (await memory.load_facts(db, user))["favorite_color"].lower() == "green"
+
+
+@needs_db
+async def test_forgets_a_fact(db, new_user):
+    user = new_user()
+    await memory.save_fact(db, user, "favorite_color", "blue")
+    async with lumi(db, user) as session:
+        result = await session.run(user_input="Forget my favorite color")
+        result.expect.next_event().is_function_call(name="forget_fact")
+    assert await memory.load_facts(db, user) == {}

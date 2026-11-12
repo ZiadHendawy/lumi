@@ -407,3 +407,18 @@ async def test_board_push_sends_the_contract_payload(db, new_user):
     }
     assert sent[1][1]["change"]["fields"] == ["priority", "target_date"]
     assert sent[1][1]["tasks"][0]["priority"] == "high"
+
+
+@needs_db
+async def test_fact_tools_normalise_keys(db, new_user):
+    state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    await tools.remember_fact(ctx, key="Favorite Color", value="blue")
+    await tools.remember_fact(ctx, key="favorite_color", value="green")
+    assert await memory.load_facts(db, state.user_id) == {"favorite_color": "green"}
+    assert "favorite_color = green" in ctx.session.current_agent.instructions
+    assert (
+        await tools.forget_fact(ctx, key="favorite color") == "Forgot favorite_color."
+    )
+    with pytest.raises(ToolError, match="No fact"):
+        await tools.forget_fact(ctx, key="favorite_color")

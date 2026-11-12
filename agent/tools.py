@@ -265,3 +265,36 @@ async def restore_task(
         raise ToolError("There is no deleted task to bring back. Nothing was changed.")
     await after_task_change(context, "restored", task, [])
     return f"Restored {describe(task)}."
+
+
+# --- Facts -------------------------------------------------------------------
+
+
+def fact_key(key: str) -> str:
+    # "Favorite Color" and "favorite_color" must land on the same row, or an update
+    # becomes a second, contradicting fact.
+    return key.strip().lower().replace(" ", "_")
+
+
+@function_tool
+async def remember_fact(context: RunContext[SessionState], key: str, value: str) -> str:
+    """Save a fact about the user for future sessions, e.g. key favorite_color.
+    Saving an existing key replaces its value."""
+    state = context.userdata
+    fact = await memory.save_fact(state.db, state.user_id, fact_key(key), value.strip())
+    async with state.lock:
+        await refresh_instructions(context.session.current_agent, state)
+    return f"Saved {fact['key']} = {fact['value']}."
+
+
+@function_tool
+async def forget_fact(context: RunContext[SessionState], key: str) -> str:
+    """Delete a saved fact."""
+    state = context.userdata
+    if not await memory.forget_fact(state.db, state.user_id, fact_key(key)):
+        raise ToolError(
+            f"No fact called {fact_key(key)} is saved. Nothing was changed."
+        )
+    async with state.lock:
+        await refresh_instructions(context.session.current_agent, state)
+    return f"Forgot {fact_key(key)}."

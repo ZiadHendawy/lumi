@@ -40,6 +40,8 @@ class Lumi(Agent):
                 tools.update_task,
                 tools.delete_task,
                 tools.restore_task,
+                tools.remember_fact,
+                tools.forget_fact,
             ],
         )
 
