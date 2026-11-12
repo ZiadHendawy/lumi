@@ -43,17 +43,37 @@ jobs:
     if: github.event_name != 'push'
     needs: agent
     runs-on: ubuntu-latest
+    env:
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     defaults:
       run:
         working-directory: agent
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # full history, to diff the PR against its base
+      # Evals spend Groq quota, so a PR that doesn't touch agent/ (web, docs) skips
+      # them. Same git-diff check as deploy-agent. Manual runs always run them.
+      - name: Did agent/ change?
+        id: changed
+        run: |
+          if [ -z "${{ github.base_ref }}" ] || ! git diff --quiet "origin/${{ github.base_ref }}...HEAD" -- .; then
+            echo "agent=true" >> "$GITHUB_OUTPUT"
+          fi
       - uses: astral-sh/setup-uv@v10.3.3  # no floating major tag upstream
+        if: steps.changed.outputs.agent == 'true'
       - run: uv sync --locked
-      - run: uv run pytest -m eval
-        env:
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        if: steps.changed.outputs.agent == 'true'
+      # PRs run the core tier (a few evals per feature, added by the PR that adds the
+      # feature). The full suite spends about half of Groq's free daily tokens, so it
+      # runs on demand: Actions -> CI -> Run workflow.
+      - name: Core evals
+        if: github.event_name == 'pull_request' && steps.changed.outputs.agent == 'true'
+        run: uv run pytest -m "eval and core"
+      - name: Full eval suite
+        if: github.event_name == 'workflow_dispatch'
+        run: uv run pytest -m eval
 
   # Vercel only deploys web/, so without this a pushed agent fix would never reach
   # LiveKit Cloud. Runs on main only, after the agent's lint and tests pass, and only

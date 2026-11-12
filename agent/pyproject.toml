@@ -31,7 +31,12 @@ pythonpath = ["."]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 # Evals call the real LLM (uses Groq quota), so they only run when asked: pytest -m eval
-markers = ["eval: conversation evals against the real LLM"]
+markers = [
+    "eval: conversation evals against the real LLM",
+    # A full eval run costs ~100K Groq tokens, half the free daily cap that the live demo
+    # also needs. So PRs run only the core tier: one or two evals per feature.
+    "core: the evals every PR runs (pytest -m 'eval and core')",
+]
 addopts = "-m 'not eval'"
 
 [tool.ruff]

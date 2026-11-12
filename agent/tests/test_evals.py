@@ -27,6 +27,7 @@ def judge():
 # --- M0 ---------------------------------------------------------------------
 
 
+@pytest.mark.core
 async def test_greets_in_persona():
     async with judge() as judge_llm, AgentSession(llm=config.build_llm()) as session:
         await session.start(Lumi())
@@ -43,6 +44,7 @@ async def test_greets_in_persona():
         result.expect.no_more_events()
 
 
+@pytest.mark.core
 async def test_still_answers_when_groq_fails(monkeypatch):
     # A bad Groq key makes every Groq call fail, so the reply must come from Gemini.
     monkeypatch.setenv("GROQ_API_KEY", "invalid")
