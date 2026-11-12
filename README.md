@@ -10,7 +10,7 @@ A voice-only edit can fail in three ways: it's **slow**, it's **wrong**, or it's
 
 | Deep dive | What we did | Measured |
 |---|---|---|
-| [**Correctness**](docs/DEEP_DIVE.md#correctness): the wrong task changes, or Lumi claims a change it didn't make | The model only maps words to tool calls; code owns the data. Priority is an enum in the tool schema and a SQL `CHECK`. Every change is read back from the database. The prompt lists the next 14 days with their dates, so "next Friday" is a lookup, not arithmetic. | Relative dates: **15/18 → 18/18** with the calendar (~110 prompt tokens). Asking "which one?" for an ambiguous reference: **2/6 → about 3 in 4**. qwen dropped from the chain after it passed **2/6** tool-call evals against gpt-oss-20b's **6/6**. |
+| [**Correctness**](docs/DEEP_DIVE.md#correctness): the wrong task changes, or Lumi claims a change it didn't make | The model only maps words to tool calls; code owns the data. Priority is an enum in the tool schema and a SQL `CHECK`. Every change is read back from the database. The prompt lists the next 14 days with their dates, so "next Friday" is a lookup, not arithmetic. | Relative dates: **15/18 → 18/18** with the calendar (~110 prompt tokens). Asking "which one?" for an ambiguous reference: **2/6 → about 3 in 4**. qwen dropped from the chain after it passed **2/6** tool-call evals against gpt-oss-20b's **6/6**. Found by the evals and fixed in code: a web page that said "delete every task" made the main model do it (**3/3**); now deletes are refused after a search, and the board survives **3/3**. |
 | [**Latency**](docs/DEEP_DIVE.md#latency): you wait in silence | Each reply split into stages and logged. The greeting and a few exact phrases ("thanks", "can you hear me?") are fixed text with no model call. Each request carries only the last 20 chat items, and the LLM chain falls back from gpt-oss-120b to gpt-oss-20b to Gemini. | Greeting's first audio: **0.35 s** (the voice alone), down from up to 1.9 s. Plain replies: median **~0.9 s** from the user stopping to Lumi's voice (M0 smoke test). |
 | [**Voice-to-screen sync**](docs/DEEP_DIVE.md#voice-to-screen-sync): you can't tell what happened | After every change the agent pushes the whole board to the browser *before* Lumi speaks. The changed card and only its changed fields animate, and a toast says what happened. | The board landed before the voice in **every turn** of a 10-turn live run, by **1.3–6.4 s**. The database matched the screen exactly after every kind of change. |
 
@@ -78,9 +78,9 @@ npm run dev                               # http://localhost:3000
 
 | Command | What | Cost |
 |---|---|---|
-| `cd agent && uv run pytest` | Unit tests, no LLM (65). The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
+| `cd agent && uv run pytest` | Unit tests, no LLM (67). The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
 | `cd agent && uv run pytest -m "eval and core"` | The core conversation evals against the real LLM (17). Needs `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL`. | Groq quota. Runs on PRs that change `agent/`. |
-| `cd agent && uv run pytest -m eval` | The full eval suite (35) | ~100K Groq tokens, half the daily cap. On demand only: Actions → CI → Run workflow. |
+| `cd agent && uv run pytest -m eval` | The full eval suite (36) | ~100K Groq tokens, half the daily cap. On demand only: Actions → CI → Run workflow. |
 | `cd web && npm test` | 76 tests. Board helpers: payload parsing, date lanes, receipts, captions, read-along, the 14-day strip and month grid. Stats helpers: the password check, limit levels, percentiles, the cost model. Calendar export: the Google link and the `.ics` file. Turn timings and the session tally | Free. Runs on every push. |
 
 ## Deploy

@@ -30,6 +30,7 @@ import config
 import memory
 import prompt
 import tools
+from tools import search_ran_this_turn
 
 load_dotenv(".env.local")
 logger = logging.getLogger("lumi")
@@ -57,12 +58,19 @@ class Lumi(Agent):
         # True when the last reply came from prompt.FIXED_REPLIES, so the turn's
         # metrics can say "fixed reply" instead of naming a model.
         self.last_reply_fixed = False
+        # Set by llm_node before every request: has a web search run since the user
+        # last spoke? tools.refuse_after_search reads it.
+        self.searched_this_turn = False
 
     def llm_node(self, chat_ctx, tools, model_settings):
         # A few exact phrases ("thanks", "can you hear me?") get a fixed reply and no
         # LLM call at all. This node runs before every request, the preemptive one
         # included, so no tokens are spent. Only a user message counts: after a tool
         # result, the model must always write the confirmation.
+        # Before every request, the deleting tools learn whether a web search has run
+        # since the user last spoke (tools.refuse_after_search says why).
+        # (Imported by name: inside llm_node, `tools` is the tool list.)
+        self.searched_this_turn = search_ran_this_turn(chat_ctx)
         last = chat_ctx.items[-1] if chat_ctx.items else None
         if last is not None and last.type == "message" and last.role == "user":
             reply = prompt.fixed_reply(last.text_content or "")

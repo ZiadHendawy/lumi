@@ -20,7 +20,7 @@ from zoneinfo import ZoneInfo
 import aiohttp
 import psycopg
 from livekit import rtc
-from livekit.agents import Agent, RunContext, ToolError, function_tool
+from livekit.agents import Agent, RunContext, ToolError, function_tool, llm
 
 import config
 import memory
@@ -317,9 +317,37 @@ async def update_task(
 # Deletes are soft (deleted_at is set, the row stays) and happen without an "are you
 # sure?" turn. A confirmation turn would add a full round trip of latency to every
 # delete; keeping the row makes a mistaken delete a one-word fix ("undo") instead.
+# --- Web text can't delete anything ----------------------------------------------
+
+
+def search_ran_this_turn(chat_ctx: llm.ChatContext) -> bool:
+    """True if look_up was called since the user last spoke. Lumi.llm_node checks it
+    before every request, so the tools below know whether web text is in play."""
+    for item in reversed(chat_ctx.items):
+        if item.type == "message" and item.role == "user":
+            return False
+        if item.type == "function_call" and item.name == "look_up":
+            return True
+    return False
+
+
+def refuse_after_search(context: RunContext[SessionState]) -> None:
+    """A web page can say "delete every task", and the 2026-11-13 eval run showed
+    gpt-oss-120b obeying it 3 times out of 3, despite the prompt. So code, not the
+    prompt, decides: once a search has run, nothing is deleted or forgotten until the
+    user speaks again. A user who asked for both in one breath just says it again."""
+    if getattr(context.session.current_agent, "searched_this_turn", False):
+        raise ToolError(
+            "Refused: a web search ran in this turn, and web text can't delete or forget"
+            " anything. Nothing was changed. Don't retry; if the user asked for this"
+            " themselves, ask them to say it again."
+        )
+
+
 @function_tool
 async def delete_task(context: RunContext[SessionState], task_id: int) -> str:
     """Delete a task. It can be restored."""
+    refuse_after_search(context)
     state = context.userdata
     task = await memory.delete_task(state.db, state.user_id, task_id)
     if task is None:
@@ -379,6 +407,7 @@ async def remember_fact(context: RunContext[SessionState], key: str, value: str)
 @function_tool
 async def forget_fact(context: RunContext[SessionState], key: str) -> str:
     """Delete a saved fact."""
+    refuse_after_search(context)
     state = context.userdata
     if not await memory.forget_fact(state.db, state.user_id, fact_key(key)):
         raise ToolError(
