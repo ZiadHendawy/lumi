@@ -79,7 +79,16 @@ async def entrypoint(ctx: JobContext) -> None:
 
     # Neon scales to zero, and waking it adds ~0.5 s to the first query. Start now so
     # that happens while the room connects, not on the user's first request.
+    job_started = time.monotonic()
     db_connecting = asyncio.create_task(memory.connect(os.environ["DATABASE_URL"]))
+    # Startup timings: if "database connected" lands after the room connects, the
+    # database is what keeps the Start button waiting.
+    db_connecting.add_done_callback(
+        lambda _: logger.info(
+            "database connected",
+            extra={"seconds": round(time.monotonic() - job_started, 3)},
+        )
+    )
 
     session = AgentSession(
         stt=config.build_stt(),
@@ -130,6 +139,9 @@ async def entrypoint(ctx: JobContext) -> None:
             ctx.shutdown(reason="user idle")
 
     await ctx.connect()
+    logger.info(
+        "room connected", extra={"seconds": round(time.monotonic() - job_started, 3)}
+    )
     # The browser's participant identity is its anonymous user id.
     participant = await ctx.wait_for_participant()
     state = tools.SessionState(
@@ -161,6 +173,9 @@ async def entrypoint(ctx: JobContext) -> None:
         return "ok"
 
     await session.start(agent=agent, room=ctx.room)
+    logger.info(
+        "session ready", extra={"seconds": round(time.monotonic() - job_started, 3)}
+    )
     # The browser shows Start once the session is running (agent state "listening"),
     # so a click can't arrive before this is registered.
     ctx.room.local_participant.register_rpc_method("lumi.start", on_start)
