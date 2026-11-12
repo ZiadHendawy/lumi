@@ -582,3 +582,21 @@ async def test_weather_rejects_dates_it_cannot_forecast(open_meteo, day):
     with pytest.raises(ToolError):
         await tools.get_weather(weather_context(), city="Jeddah", date=day)
     assert open_meteo.requests == []  # rejected before any HTTP call
+
+
+def test_lumi_says_sorry_only_when_every_model_failed():
+    import agent
+
+    said = []
+    session = SimpleNamespace(said=said, say=lambda text, **kw: said.append((text, kw)))
+
+    def error(kind, recoverable):
+        return SimpleNamespace(
+            error=SimpleNamespace(type=kind, recoverable=recoverable)
+        )
+
+    agent.apologise_if_no_model_answered(session, error("llm_error", True))  # a retry
+    agent.apologise_if_no_model_answered(session, error("tts_error", False))
+    assert said == []
+    agent.apologise_if_no_model_answered(session, error("llm_error", False))
+    assert said == [(prompt.NO_MODEL_ANSWERED, {"add_to_chat_ctx": False})]

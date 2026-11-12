@@ -13,6 +13,7 @@ from livekit.agents import (
     AgentSession,
     AgentStateChangedEvent,
     ConversationItemAddedEvent,
+    ErrorEvent,
     FunctionToolsExecutedEvent,
     JobContext,
     JobProcess,
@@ -69,6 +70,15 @@ def parse_timezone(payload: str) -> str:
         return name
     except (ValueError, TypeError, KeyError, ZoneInfoNotFoundError):
         return "UTC"
+
+
+def apologise_if_no_model_answered(session: AgentSession, ev: ErrorEvent) -> None:
+    # A non-recoverable LLM error means every model in the fallback chain failed, retries
+    # included (free-tier caps). LiveKit then drops the turn without a word: live, the
+    # lantern sat on "thinking" for 33 s and went quiet (2026-11-12). A fixed line needs
+    # no LLM, and it stays out of the chat history so the model never sees it as a reply.
+    if ev.error.type == "llm_error" and not ev.error.recoverable:
+        session.say(prompt.NO_MODEL_ANSWERED, add_to_chat_ctx=False)
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -149,6 +159,8 @@ async def entrypoint(ctx: JobContext) -> None:
                     "error": output.is_error,
                 },
             )
+
+    session.on("error", lambda ev: apologise_if_no_model_answered(session, ev))
 
     @session.on("user_state_changed")
     def end_when_idle(ev: UserStateChangedEvent) -> None:

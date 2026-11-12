@@ -31,6 +31,13 @@ For weather with no city given, use the home_city fact, or ask.
 # this it truthfully concludes it is reading text and says so (smoke test 2026-11-11).
 
 
+# Said, not generated, when every model in the fallback chain has failed for a turn:
+# the LLM is exactly what is unavailable then.
+NO_MODEL_ANSWERED = (
+    "Sorry, my thinking is overloaded for a moment. Please say that again shortly."
+)
+
+
 def greeting(tasks: list[dict]) -> str:
     """What Lumi says when the user clicks Start, written here instead of generated.
 
