@@ -1,33 +1,37 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, type ReactNode } from 'react';
 import type { Task } from '@/lib/board';
 import { boardToIcs, calendarTasks, googleCalendarUrl } from '@/lib/calendar';
 
-// What's built is a button; what's planned is a greyed line saying what it would take. No fake
-// buttons, so the panel never promises something that isn't there.
-const PLANNED = [
-  {
-    name: 'Google Calendar & Outlook two-way sync',
-    takes: 'OAuth sign-in, tokens stored per user, and today’s events read into Lumi’s prompt so it can plan around them.',
-  },
-  {
-    name: (
-      <>
-        <span lang="ar" dir="rtl">
-          العربية
-        </span>{' '}
-        (Arabic)
-      </>
-    ),
-    takes: 'Deepgram Nova-3 already understands Arabic; the voice (Aura) has no Arabic yet, so it needs another TTS.',
-  },
-  { name: 'Call Lumi from a phone', takes: 'LiveKit SIP routes a phone number to the same agent.' },
-  { name: 'A shared family board', takes: 'Several people in one LiveKit room, each change pushed to everyone.' },
-  { name: 'Reminders at a time', takes: 'Tasks have dates, not times, yet; then a push notification.' },
-  { name: 'Sign in on any device', takes: 'The board is tied to this browser today (an anonymous id).' },
-  { name: 'Recurring tasks', takes: '“Every Sunday” as a repeat rule on the task.' },
-];
+// Only integrations live here; the wider roadmap (Arabic, a family board, reminders...) is in the
+// README. What works has a button or a "Works today" pill. What doesn't is a quieter row with a
+// "Coming soon" pill and no button, so the panel never promises something that isn't there.
+
+// Small generic glyphs (no brand logos), stroked in currentColor so they follow the row's colour.
+const GLYPHS = {
+  file: 'M5 2.5h6l4 4v11H5zM11 2.5v4h4M10 9v5.5M7.5 12 10 14.5l2.5-2.5',
+  calendar: 'M3.5 4.5h13v12h-13zM3.5 8h13M7 2.5v3M13 2.5v3',
+  sync: 'M15.5 8A6 6 0 0 0 4.8 6.2M4.5 3v3.5H8M4.5 12a6 6 0 0 0 10.7 1.8M15.5 17v-3.5H12',
+  phone: 'M6.5 3h-2A1.5 1.5 0 0 0 3 4.6 13 13 0 0 0 15.4 17a1.5 1.5 0 0 0 1.6-1.5v-2l-3.3-1.4-1.6 1.6a9 9 0 0 1-4.8-4.8l1.6-1.6z',
+};
+
+// One integration: glyph, name, one short line, and on the right a button or a status pill.
+// `title` is the tooltip with what an unbuilt one would take.
+function Row(props: { glyph: keyof typeof GLYPHS; name: string; line: string; title?: string; children: ReactNode }) {
+  return (
+    <li className="connections-row" title={props.title}>
+      <svg className="connections-glyph" viewBox="0 0 20 20" width="20" height="20" aria-hidden="true">
+        <path d={GLYPHS[props.glyph]} />
+      </svg>
+      <div className="connections-body">
+        <p className="connections-name">{props.name}</p>
+        <p className="connections-line">{props.line}</p>
+      </div>
+      {props.children}
+    </li>
+  );
+}
 
 // The "Connections" button for the board's meta row, and the panel it opens.
 export default function Connections({ tasks }: { tasks: Task[] }) {
@@ -71,39 +75,47 @@ export default function Connections({ tasks }: { tasks: Task[] }) {
             </button>
           </header>
 
-          <section className="connections-section" aria-labelledby="connections-calendar">
-            <h3 id="connections-calendar" className="connections-name">
-              Calendar <span className="connections-tag is-ready">Works today</span>
-            </h3>
-            <p className="connections-text">
-              Your dated tasks as all-day events, for Apple Calendar, Outlook or Google Calendar.
-            </p>
-            <button className="connections-download" onClick={downloadIcs} disabled={datedCount === 0}>
-              Download .ics
-            </button>
-            <p className="connections-note">
-              {datedCount === 0
-                ? 'No open task has a date yet. Give one a day, then download.'
-                : `${datedCount} ${datedCount === 1 ? 'task' : 'tasks'} with a date. Open the file to import it.`}
-            </p>
-            <p className="connections-text">Each dated card also has its own “Add to Google Calendar” link.</p>
-          </section>
+          <h3 className="connections-group">Works today</h3>
+          <ul className="connections-list">
+            <Row glyph="file" name="Calendar file (.ics)" line="For Apple Calendar, Outlook or Google Calendar.">
+              <div className="connections-action">
+                <button
+                  className="connections-download"
+                  onClick={downloadIcs}
+                  disabled={datedCount === 0}
+                  aria-describedby="connections-count"
+                >
+                  Download .ics
+                </button>
+                <span id="connections-count" className="connections-note">
+                  {datedCount === 0 ? 'No dated tasks yet' : `${datedCount} dated ${datedCount === 1 ? 'task' : 'tasks'}`}
+                </span>
+              </div>
+            </Row>
+            <Row glyph="calendar" name="Google Calendar" line="Use the calendar icon on any dated card.">
+              <span className="connections-tag is-ready">Works today</span>
+            </Row>
+          </ul>
 
-          <section className="connections-section" aria-labelledby="connections-planned">
-            <h3 id="connections-planned" className="connections-name">
-              Planned
-            </h3>
-            <ul className="connections-planned">
-              {PLANNED.map((item, i) => (
-                <li key={i}>
-                  <p className="connections-item">
-                    {item.name} <span className="connections-tag">Planned</span>
-                  </p>
-                  <p className="connections-text">{item.takes}</p>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <h3 className="connections-group">Coming soon</h3>
+          <ul className="connections-list is-soon">
+            <Row
+              glyph="sync"
+              name="Calendar sync"
+              line="Two-way with Google Calendar and Outlook."
+              title="Needs OAuth sign-in, tokens stored per user, and your events read into Lumi’s prompt."
+            >
+              <span className="connections-tag">Coming soon</span>
+            </Row>
+            <Row
+              glyph="phone"
+              name="Phone call"
+              line="Call Lumi from any phone."
+              title="LiveKit SIP would route a phone number to the same agent."
+            >
+              <span className="connections-tag">Coming soon</span>
+            </Row>
+          </ul>
         </div>
       </dialog>
     </>

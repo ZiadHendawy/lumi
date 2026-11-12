@@ -14,7 +14,7 @@ The look is "the lantern board": a dark board where a card's priority is how bri
 - **Tool activity:** the lantern says "Searching the web…" during a search, and the card being searched breathes.
 - **X-ray** (press X, or the button top right) is for anyone curious how it works: the last reply's timing stages, the model that answered, how far the screen led the voice, this session's medians, and the prompt exactly as the model reads it. It only opens on request.
 - **End of a session:** one line in your words: "3 tasks added · 2 done · 1 new thing remembered". The engineering numbers for the session (median time to voice, screen lead, models) are in X-ray.
-- **Connections:** download your dated tasks as `.ics` or add one to Google Calendar, with no sign-in. Planned integrations are listed honestly.
+- **Connections:** download your dated tasks as `.ics` or add one to Google Calendar, with no sign-in. Calendar sync and phone calls are marked "Coming soon".
 - **End of the day:** when everything due today is done, "All of today's lanterns are out."
 - **Keys:** Space talks or mutes, Esc ends, X opens X-ray. Before you speak, the dock suggests phrases that fit your board.
 
@@ -81,11 +81,11 @@ npm run dev                               # http://localhost:3000
 
 Works today: dated tasks go to a calendar with no sign-in. Each dated card has an "Add to Google Calendar" link, and **Connections** downloads the board as an `.ics` file for Apple Calendar, Outlook or Google Calendar.
 
-Planned (also listed in the app's Connections panel):
+Planned (the first two are also in the app's Connections panel, as "Coming soon"):
 
 - **Google Calendar & Outlook two-way sync:** OAuth sign-in, tokens stored per user, and today's events read into Lumi's prompt.
-- **Arabic:** Deepgram Nova-3 already understands it; the voice (Aura) has no Arabic yet, so it needs another TTS.
 - **Call Lumi from a phone:** LiveKit SIP routes a phone number to the same agent.
+- **Arabic:** Deepgram Nova-3 already understands it; the voice (Aura) has no Arabic yet, so it needs another TTS.
 - **A shared family board:** several people in one LiveKit room, each change pushed to everyone.
 - **Reminders at a time:** tasks have dates, not times, yet; then a push notification.
 - **Sign in on any device:** the board is tied to this browser today (an anonymous id).
