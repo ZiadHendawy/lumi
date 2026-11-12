@@ -4,6 +4,18 @@
 
 The look is "the lantern board": a dark board where a card's priority is how brightly it glows, done tasks are put out, and the talk button is a lantern that reacts to your voice and Lumi's.
 
+## Deep dives: voice control you can trust
+
+A voice-only edit can fail in three ways: it's **slow**, it's **wrong**, or it's **invisible**. Each one is a deep dive, with measurements, what didn't work, and how to reproduce it, in [docs/DEEP_DIVE.md](docs/DEEP_DIVE.md).
+
+| Deep dive | What we did | Measured |
+|---|---|---|
+| [**Correctness**](docs/DEEP_DIVE.md#correctness): the wrong task changes, or Lumi claims a change it didn't make | The model only maps words to tool calls; code owns the data. Priority is an enum in the tool schema and a SQL `CHECK`. Every change is read back from the database. The prompt lists the next 14 days with their dates, so "next Friday" is a lookup, not arithmetic. | Relative dates: **15/18 → 18/18** with the calendar (~110 prompt tokens). Asking "which one?" for an ambiguous reference: **2/6 → about 3 in 4**. qwen dropped from the chain after it passed **2/6** tool-call evals against gpt-oss-20b's **6/6**. |
+| [**Latency**](docs/DEEP_DIVE.md#latency): you wait in silence | Each reply split into stages and logged. The greeting and a few exact phrases ("thanks", "can you hear me?") are fixed text with no model call. Each request carries only the last 20 chat items, and the LLM chain falls back from gpt-oss-120b to gpt-oss-20b to Gemini. | Greeting's first audio: **0.35 s** (the voice alone), down from up to 1.9 s. Plain replies: median **~0.9 s** from the user stopping to Lumi's voice (M0 smoke test). |
+| [**Voice-to-screen sync**](docs/DEEP_DIVE.md#voice-to-screen-sync): you can't tell what happened | After every change the agent pushes the whole board to the browser *before* Lumi speaks. The changed card and only its changed fields animate, and a toast says what happened. | The board landed before the voice in **every turn** of a 10-turn live run, by **1.3–6.4 s**. The database matched the screen exactly after every kind of change. |
+
+**See them live:** press **X** on the page. X-ray shows the last reply's stages, the model that answered, how far the screen led the voice (measured in your browser), and the prompt exactly as the model reads it. `/stats` has the latency percentiles, free-tier usage and what the same traffic would cost at list prices.
+
 ## On the page
 
 - **The board** lights the card that changed, and only the field that changed, before Lumi finishes saying it. A delete drifts away with an undo hint.
