@@ -1,11 +1,24 @@
-// The /stats page: how close each free plan is to its limit, and where the time goes
-// in a voice turn. A server component: provider keys and the database URL never reach
-// the browser. Rendered on every request, so a refresh shows the latest numbers.
+// The /stats page: how close each free plan is to its limit, where the time goes in a
+// voice turn, and what the traffic would cost at list prices. A server component:
+// provider keys and the database URL never reach the browser. Rendered on every
+// request, so a refresh shows the latest numbers.
 import { neon } from '@neondatabase/serverless';
 import { RoomServiceClient } from 'livekit-server-sdk';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { LLM_LIMITS, SESSION_LIMIT, type StageSummary, isAuthorized, levelOf, summarize } from '@/lib/stats';
+import {
+  LLM_LIMITS,
+  PRICES_CHECKED,
+  REPLIES_PER_CONVERSATION,
+  SESSION_LIMIT,
+  type StageSummary,
+  type UsageSum,
+  costSummary,
+  dollars,
+  isAuthorized,
+  levelOf,
+  summarize,
+} from '@/lib/stats';
 import styles from './stats.module.css';
 
 export const metadata = { title: 'Lumi stats', robots: { index: false } };
@@ -80,6 +93,24 @@ async function recentTurns() {
     LIMIT 2000`) as TurnRow[];
 }
 
+async function monthUsage() {
+  // Everything the cost section needs: every provider's sums and the reply count,
+  // over the same 30 days.
+  const [usage, [{ replies }]] = await Promise.all([
+    sql()`
+      SELECT kind, model,
+        coalesce(sum(input_tokens), 0)::int AS input_tokens,
+        coalesce(sum(output_tokens), 0)::int AS output_tokens,
+        coalesce(sum(audio_seconds), 0)::float AS audio_seconds,
+        coalesce(sum(characters), 0)::int AS characters
+      FROM provider_usage
+      WHERE at > now() - interval '30 days'
+      GROUP BY kind, model`,
+    sql()`SELECT count(*)::int AS replies FROM turn_metrics WHERE at > now() - interval '30 days'`,
+  ]);
+  return { usage: usage as UsageSum[], replies: replies as number };
+}
+
 async function liveSessions() {
   // One room is one visitor, with one agent session in it.
   const rooms = new RoomServiceClient(
@@ -133,13 +164,14 @@ export default async function StatsPage() {
   // leak if the proxy's matcher is ever changed by mistake.
   if (!isAuthorized((await headers()).get('authorization'), process.env.STATS_PASSWORD)) notFound();
 
-  const [llm, speech, turns, sessions, search, credit] = await Promise.all([
+  const [llm, speech, turns, sessions, search, credit, month] = await Promise.all([
     orNull(llmUsage),
     orNull(speechUsage),
     orNull(recentTurns),
     orNull(liveSessions),
     orNull(searchCredits),
     orNull(deepgramCredit),
+    orNull(monthUsage),
   ]);
 
   return (
@@ -147,7 +179,7 @@ export default async function StatsPage() {
       <header className={styles.header}>
         <h1>Lumi stats</h1>
         <p className={styles.muted}>
-          Free-plan limits and voice latency for the live demo, as of{' '}
+          Free-plan limits, voice latency and cost for the live demo, as of{' '}
           {new Date().toLocaleTimeString('en-GB', { timeZone: 'UTC' })} UTC. Refresh for new numbers.
         </p>
       </header>
@@ -255,7 +287,63 @@ export default async function StatsPage() {
         <h2>Latency</h2>
         {turns === null ? <Unavailable /> : <Latency turns={turns} />}
       </section>
+
+      <section className={styles.section}>
+        <h2>What it would cost</h2>
+        <p className={styles.muted}>
+          The last 30 days at pay-as-you-go list prices, as if there were no free plans. Prices checked{' '}
+          {PRICES_CHECKED}.
+        </p>
+        {month === null ? <Unavailable /> : <Cost month={month} searches={search?.used ?? null} />}
+      </section>
     </main>
+  );
+}
+
+function Cost({ month, searches }: { month: { usage: UsageSum[]; replies: number }; searches: number | null }) {
+  const cost = costSummary(month.usage, searches ?? 0, month.replies);
+  const lines: [string, string, string][] = [
+    ['Language models', 'Groq, Gemini', dollars(cost.llm)],
+    ['Speech-to-text', 'Deepgram Nova-3', dollars(cost.stt)],
+    ['Voice', 'Deepgram Aura-2', dollars(cost.tts)],
+    ['Web search', 'Tavily', searches === null ? '—' : dollars(cost.search)],
+    ['Agent minutes', 'LiveKit Cloud', dollars(cost.agent)],
+  ];
+  return (
+    <div className={styles.grid}>
+      <Card
+        title="Last 30 days"
+        note={
+          'Agent minutes are taken as the speech-to-text minutes (the mic streams while it is on), so they are a low estimate. ' +
+          'Searches are Tavily’s count for this calendar month' +
+          (searches === null ? ', which couldn’t be loaded, so they aren’t counted.' : '.') +
+          ' Gemini is priced as its newest Flash-Lite (approximate).'
+        }
+      >
+        <p className={styles.figure}>{dollars(cost.total)}</p>
+        {lines.map(([name, provider, value]) => (
+          <div key={name} className={styles.usage}>
+            <p>
+              {name}
+              <span className={styles.hint}>{provider}</span>
+            </p>
+            <p className={styles.usageValue}>{value}</p>
+          </div>
+        ))}
+        {cost.unpriced.length > 0 && (
+          <p className={styles.note}>No price for {cost.unpriced.join(', ')}, so not counted.</p>
+        )}
+      </Card>
+      <Card title="Per spoken reply" note={`${month.replies.toLocaleString('en-US')} replies in the last 30 days.`}>
+        <p className={styles.figure}>{dollars(cost.perReply)}</p>
+      </Card>
+      <Card
+        title="1,000 conversations like these"
+        note={`Assumes ${REPLIES_PER_CONVERSATION} replies a conversation: sessions aren’t recorded, so this is a guess, not a count.`}
+      >
+        <p className={styles.figure}>{dollars(cost.perThousandConversations)}</p>
+      </Card>
+    </div>
   );
 }
 

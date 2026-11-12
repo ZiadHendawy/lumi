@@ -123,6 +123,23 @@ The bench times the models in `config.build_llm()`. qwen is no longer in that ch
 
 The LLM runs cost ~5K Groq tokens each (three requests of ~1.5K), and the free tier is 8K a minute per model, so keep `--runs` small and `--pause` long. In a live session, `lk agent logs` shows `turn latency`, `user turn latency`, `tool call`, `board push to speech`, and the startup lines.
 
+### Cost
+
+Lumi runs at $0 on free plans, but the `/stats` page prices the same traffic at pay-as-you-go list prices (sources and dates in TECH_STACK §15), so the latency work has a dollar figure next to it. It computes the numbers live; the formula is:
+
+```
+cost per reply = ( LLM tokens in × input price + tokens out × output price      (per model)
+                 + speech-to-text minutes × $0.0077
+                 + voice characters ÷ 1,000 × $0.030
+                 + searches × $0.008
+                 + agent minutes × $0.01 )                                      over 30 days
+                 ÷ spoken replies in the same 30 days
+
+1,000 conversations = cost per reply × 8 replies × 1,000
+```
+
+Agent minutes aren't recorded, so the speech-to-text minutes stand in for them (a low estimate: the mic is off until Start). Sessions aren't recorded either, so 8 replies a conversation is an assumption, named on the page. The levers the latency work points at are also the cost levers: fewer LLM calls per turn (skipping call 2 on simple changes) and a shorter prompt cut input tokens, and Aura characters scale with how long the reply is.
+
 ## Correctness
 
 Goal: when Lumi says "Done, Call mom is now high priority for Friday", that is exactly what the database holds. And when Lumi isn't sure which task you mean, it asks instead of guessing.

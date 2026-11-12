@@ -9,7 +9,7 @@ Figures marked "third-party" come from pricing write-ups. Figures marked "measur
 
 | Service | Role | Free? | Free allowance | Catch |
 |---|---|---|---|---|
-| LiveKit Cloud (Build) | Realtime audio + agent hosting | ✅ Free | About 1,000 agent-session min/month (third-party figure), 5 concurrent sessions, 1 hosted agent | **The free agent scales to zero, so the first connection after idle has a 10–20 s cold start.** Stops at the limit, no surprise bill. |
+| LiveKit Cloud (Build) | Realtime audio + agent hosting | ✅ Free | 1,000 agent-session min/month (livekit.com/pricing, checked 2026-11-12), 5 concurrent sessions, 1 hosted agent | **The free agent scales to zero, so the first connection after idle has a 10–20 s cold start.** Stops at the limit, no surprise bill. |
 | Deepgram | STT (and TTS, see below) | ✅ Free credit | $200 credit, no card needed | One-time credit, not a monthly plan. More than enough for this project. |
 | Cartesia | TTS (alternative) | ⚠️ Too small | About 20k credits/month ≈ 20–25 min of audio, non-commercial | Development and demos would use it up. **No longer the default.** |
 | Groq | LLM | ✅ Free | **Measured on our key:** per model, 1,000 requests/day, 8,000 tokens/min (qwen: 7K *input* tokens/min) and **200K tokens/day on a rolling 24 h window** (it does not reset at midnight). Chat models offered: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` (`llama-3.3-70b` is gone). | A tool turn is about 2.5K tokens (two LLM calls), so **8K tokens/min is about 3 tool turns a minute**. The daily cap is the one we actually hit: dev, CI and evals share it, and a full eval run is ~100K tokens. Because the caps are per model, a second Groq model adds a full day of capacity. |
@@ -209,6 +209,7 @@ The worker is a long-running Python process, so serverless platforms are out.
 - **Data.** Groq and Gemini have no usage API on the free plans, so the agent records its own use: `provider_usage` (one row per LLM request, plus speech seconds and voice characters) and `turn_metrics` (each stage of a reply). The page sums them over the cap windows (last minute, rolling 24 h). The counts are complete because the production keys are only used by the live agent. Tavily (`GET /usage`, free) and LiveKit (`listRooms`) are asked live. Deepgram's balance needs a key with `usage:read` and `billing:read`, which the agent's key lacks, so it's optional (`DEEPGRAM_USAGE_KEY`).
 - **The web app reading Neon.** §14 rejected that for the board, because it would mean the tasks SQL twice in two languages. This is different: read-only metrics queries, through a `stats_reader` role that can only `SELECT` the two metrics tables (it is refused on `tasks` and `facts`). Driver: `@neondatabase/serverless` (no dependencies of its own).
 - **Access.** Basic auth in `proxy.ts` (Next 16's name for middleware) with `STATS_PASSWORD`, checked again in the page. The tables hold no user id and no words, only counts and timings.
+- **What it would cost (added 2026-11-12).** Cost is the first question about any voice agent, so the page also prices the last 30 days at pay-as-you-go list prices: the total split by provider, the cost per spoken reply (total ÷ replies in `turn_metrics`) and per 1,000 conversations (× an assumed 8 replies each, since sessions aren't recorded). It reuses the usage the page already reads, so no new data and no new dependency. Prices are a `PRICES` constant in `web/lib/stats.ts`, from the official pages in §15. Assumptions are written on the page: agent minutes = speech-to-text minutes (a low estimate), Tavily searches are this calendar month's count, Gemini is priced as the newest Flash-Lite.
 
 ---
 
@@ -261,3 +262,17 @@ The worker is a long-running Python process, so serverless platforms are out.
 | Participant attributes | Automatically synced state | Small size limits. Meant for small key/value data, not lists. |
 
 **Pick: text stream, whole board each time.** The browser replaces its state with what arrives, so it can never drift from the database. A tiny `change` field tells it which card and which fields to animate. The browser also caches the last board in `localStorage` to cover the agent's cold start.
+
+## 15. Cost at list prices
+
+What the `/stats` page uses to price the traffic (`PRICES` in `web/lib/stats.ts`). Pay-as-you-go, USD, all checked 2026-11-12 on the official pages. Lumi itself pays $0: these say what the same traffic would cost once past the free plans.
+
+| Service | Price | Source | Note |
+|---|---|---|---|
+| Groq `openai/gpt-oss-120b` | $0.15 / M input tokens, $0.60 / M output | [console.groq.com/docs/models](https://console.groq.com/docs/models) | On-demand |
+| Groq `openai/gpt-oss-20b` | $0.075 / M input, $0.30 / M output | [console.groq.com/docs/models](https://console.groq.com/docs/models) | On-demand |
+| Gemini `gemini-flash-lite-latest` | $0.30 / M input, $2.50 / M output | [ai.google.dev/gemini-api/docs/pricing](https://ai.google.dev/gemini-api/docs/pricing) | **Approximate.** Google doesn't document which model the alias points to, so it is priced as `gemini-3.5-flash-lite`, the newest and dearest Flash-Lite (3.1: $0.25 / $1.50; 2.5: $0.10 / $0.40). Paid tier, standard. |
+| Deepgram Nova-3 streaming STT | $0.0077 / min | [deepgram.com/pricing](https://deepgram.com/pricing) | Monolingual |
+| Deepgram Aura-2 TTS | $0.030 / 1,000 characters | [deepgram.com/pricing](https://deepgram.com/pricing) | |
+| Tavily search | $0.008 / credit | [tavily.com/pricing](https://www.tavily.com/pricing) | A basic search is 1 credit. Free plan: 1,000 credits/month. |
+| LiveKit Cloud agent session minutes | $0.01 / min | [livekit.com/pricing](https://livekit.com/pricing) | The overage rate on Ship ($50/month, 5,000 min included) and Scale. The free Build plan includes 1,000 min and has no overage, it stops. The page leaves out the plan fee and WebRTC minutes ($0.0005 / min after 150,000 on Ship). |
