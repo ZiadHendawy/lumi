@@ -14,12 +14,15 @@ import {
 } from '@livekit/components-react';
 import Board from '@/components/Board';
 import {
+  type Facts,
   type RecentChange,
   type Task,
   addChange,
-  loadCachedTasks,
+  changedFacts,
+  describeFactChanges,
+  loadCachedBoard,
   parseBoard,
-  saveCachedTasks,
+  saveCachedBoard,
   userCaption,
 } from '@/lib/board';
 import { getUserId } from '@/lib/userId';
@@ -27,7 +30,15 @@ import { getUserId } from '@/lib/userId';
 const tokenSource = TokenSource.endpoint('/api/token');
 const BOARD_TOPIC = 'lumi.board'; // must match the topic the agent sends on
 
-type BoardState = { tasks: Task[]; recent: RecentChange[]; seq: number; live: boolean };
+type BoardState = {
+  tasks: Task[];
+  facts: Facts;
+  recent: RecentChange[];
+  // The facts the latest push changed, so only their chips light up; `seq` restarts the glow.
+  factsChanged: { keys: string[]; seq: number; text: string[] };
+  seq: number;
+  live: boolean;
+};
 
 type LanternState =
   | 'waking'
@@ -67,12 +78,17 @@ export default function VoiceSession() {
   const [error, setError] = useState<string | null>(null);
 
   // Start from the board cached on the last visit, so it's there during the agent's cold start.
-  const [board, setBoard] = useState<BoardState>(() => ({
-    tasks: loadCachedTasks(userId) ?? [],
-    recent: [],
-    seq: 0,
-    live: false,
-  }));
+  const [board, setBoard] = useState<BoardState>(() => {
+    const cached = loadCachedBoard(userId);
+    return {
+      tasks: cached?.tasks ?? [],
+      facts: cached?.facts ?? {},
+      recent: [],
+      factsChanged: { keys: [], seq: 0, text: [] },
+      seq: 0,
+      live: false,
+    };
+  });
 
   // The agent sends the whole board as one JSON text stream after every change (and once when
   // we join). Registered before connecting so the first board can't arrive with no listener.
@@ -82,11 +98,19 @@ export default function VoiceSession() {
     room.registerTextStreamHandler(BOARD_TOPIC, async (reader) => {
       const payload = parseBoard(await reader.readAll());
       if (!payload) return;
-      saveCachedTasks(userId, payload.tasks);
+      saveCachedBoard(userId, payload.tasks, payload.facts);
       setBoard((prev) => {
         const seq = prev.seq + 1;
         const recent = payload.change ? addChange(prev.recent, seq, payload.change, prev.tasks, payload.tasks) : prev.recent;
-        return { tasks: payload.tasks, recent, seq, live: true };
+        // The first live push only replaces the cached copy: nothing was just remembered.
+        const factsChanged = prev.live
+          ? {
+              keys: changedFacts(prev.facts, payload.facts),
+              seq,
+              text: describeFactChanges(prev.facts, payload.facts),
+            }
+          : prev.factsChanged;
+        return { tasks: payload.tasks, facts: payload.facts, recent, factsChanged, seq, live: true };
       });
     });
     return () => room.unregisterTextStreamHandler(BOARD_TOPIC);
@@ -166,6 +190,8 @@ export default function VoiceSession() {
 
       <Board
         tasks={board.tasks}
+        facts={board.facts}
+        factsChanged={board.factsChanged}
         recent={board.recent}
         seq={board.seq}
         live={board.live}

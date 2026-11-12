@@ -20,14 +20,19 @@ export type Change = {
   fields: string[]; // which fields an 'updated' change touched, e.g. ['priority']
 };
 
-export type BoardPayload = { tasks: Task[]; change: Change | null };
+// What Lumi remembers about the user, e.g. { favorite_color: 'blue' }.
+export type Facts = Record<string, string>;
+
+export type BoardPayload = { tasks: Task[]; facts: Facts; change: Change | null };
 
 // The stream is text from the network, so check its shape before trusting it.
 export function parseBoard(text: string): BoardPayload | null {
   try {
     const data = JSON.parse(text);
     if (!Array.isArray(data?.tasks)) return null;
-    return { tasks: data.tasks, change: data.change ?? null };
+    // An older agent sends no facts; an empty shelf is the honest default.
+    const facts = data.facts && typeof data.facts === 'object' && !Array.isArray(data.facts) ? data.facts : {};
+    return { tasks: data.tasks, facts, change: data.change ?? null };
   } catch {
     return null;
   }
@@ -38,19 +43,19 @@ export function parseBoard(text: string): BoardPayload | null {
 
 const cacheKey = (userId: string) => `lumi.board.${userId}`;
 
-export function loadCachedTasks(userId: string): Task[] | null {
+export function loadCachedBoard(userId: string): BoardPayload | null {
   try {
     const text = localStorage.getItem(cacheKey(userId));
-    return text ? parseBoard(text)?.tasks ?? null : null;
+    return text ? parseBoard(text) : null;
   } catch {
     return null;
   }
 }
 
-export function saveCachedTasks(userId: string, tasks: Task[]) {
+export function saveCachedBoard(userId: string, tasks: Task[], facts: Facts) {
   try {
     // Stored without the change, so a reload doesn't replay the last animation.
-    localStorage.setItem(cacheKey(userId), JSON.stringify({ tasks, change: null }));
+    localStorage.setItem(cacheKey(userId), JSON.stringify({ tasks, facts, change: null }));
   } catch {
     // Ignore: the live board still arrives from the agent.
   }
@@ -190,6 +195,27 @@ export function cardChange(recent: RecentChange[], taskId: number): RecentChange
 // The board's tasks plus the deleted ones that are still drifting away.
 export function withGhosts(tasks: Task[], recent: RecentChange[]): Task[] {
   return [...tasks, ...recent.flatMap((r) => (r.ghost ? [r.ghost] : []))];
+}
+
+// --- Memory shelf: the facts Lumi keeps, shown beside the board.
+
+// "favorite_color" -> "favorite color": keys are stored in snake case (tools.fact_key).
+export function factLabel(key: string): string {
+  return key.replaceAll('_', ' ');
+}
+
+// The keys that are new or hold a new value, so only those chips light up.
+export function changedFacts(before: Facts, after: Facts): string[] {
+  return Object.keys(after).filter((key) => before[key] !== after[key]);
+}
+
+// One sentence per fact that changed, for screen readers (the chip itself is the visual).
+export function describeFactChanges(before: Facts, after: Facts): string[] {
+  const remembered = changedFacts(before, after).map((key) => `Remembered your ${factLabel(key)}: ${after[key]}`);
+  const forgot = Object.keys(before)
+    .filter((key) => !(key in after))
+    .map((key) => `Forgot your ${factLabel(key)}`);
+  return [...remembered, ...forgot];
 }
 
 // --- Captions: what the user said in their latest turn.

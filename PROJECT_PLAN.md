@@ -33,6 +33,7 @@
 | When every model fails (2026-11-12) | **A fixed sorry line** (`prompt.NO_MODEL_ANSWERED`), kept out of the chat history | Without it LiveKit dropped the turn without a word: live, the lantern sat on "thinking" for 33 s. A fixed line needs no LLM, which is exactly what is unavailable then. |
 | Evals in CI (2026-11-12) | **PRs run a `core` tier** (`pytest -m "eval and core"`, 17 of 35) and **skip evals when `agent/` didn't change**. The full suite runs on demand. | A full run costs ~100K Groq tokens, half the daily cap that the live demo also needs. Each feature's PR adds one or two core evals. |
 | Ambiguity eval (2026-11-12) | **Kept out of the core tier**, runs in the full suite | It passes ~75–80% of runs on gpt-oss-20b, and only the model can see that "the call" is ambiguous, so code can't guard it. A flaky required check teaches people to ignore red CI. Its pass rate is tracked in docs/DEEP_DIVE.md instead. |
+| Memory on screen (2026-11-12) | **The saved facts ride in every `lumi.board` push** and show as a "Lumi remembers" shelf. Fact changes push with `change: null`; the browser compares old and new facts to light the chip. | Memory is a core feature, but it was only audible. Same channel and same three queries per change (the facts were already read for the prompt). No new change-note kinds, so the task contract stays as it was. |
 
 ## Guiding principles
 1. **Infra first.** Get a working voice loop deployed end to end before any product work.
@@ -64,7 +65,7 @@ LiveKit Cloud ◀──▶ Agent worker (Python, LiveKit Cloud)
 **Life of one voice turn:** user speaks → VAD/turn detector decides they've finished → Deepgram transcript → Groq LLM (may call a tool) → tool writes to Postgres and pushes the board to the browser → Deepgram Aura streams the spoken confirmation back. Each stage's latency is logged, including how far the board update lands ahead of the voice.
 
 **Agent ↔ browser contract** (the only coupling between `agent/` and `web/`):
-1. `lumi.board` text stream, agent → browser: `{"tasks": [{id, title, body, priority, target_date, done, updated_at}], "change": {action, task_id, title, fields} | null}`. It's sent when the user joins (at page load) and after every change.
+1. `lumi.board` text stream, agent → browser: `{"tasks": [{id, title, body, priority, target_date, done, updated_at}], "facts": {key: value}, "change": {action, task_id, title, fields} | null}`. It's sent when the user joins (at page load) and after every change, facts included.
 2. `lumi.start` RPC, browser → agent, on click: payload `{"timezone": "<IANA name>"}`, so "today" and "tomorrow" mean the user's day.
 3. Captions use LiveKit's standard transcription streams.
 

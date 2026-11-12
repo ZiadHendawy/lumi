@@ -192,6 +192,75 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Memory shelf: what Lumi remembers about you ---------- */
+
+.memory {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  margin: -14px 0 32px;
+}
+
+.memory-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+
+.memory-hint {
+  margin: 0;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--paper-faint);
+}
+
+.memory-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fact {
+  display: inline-flex;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  font-size: 13px;
+}
+.fact-key {
+  color: var(--paper-faint);
+}
+.fact-value {
+  overflow-wrap: anywhere;
+  color: var(--paper);
+}
+
+/* Just remembered: the chip catches the lantern's light, then settles. */
+.fact.is-lit {
+  animation: fact-lit 2.4s ease-out;
+}
+@keyframes fact-lit {
+  0% {
+    transform: scale(0.9);
+    filter: brightness(1.8);
+    border-color: rgba(255, 210, 140, 0.9);
+    box-shadow: 0 0 34px 4px var(--amber-soft);
+  }
+  25% {
+    transform: scale(1.04);
+  }
+}
+
 .lanes {
   display: grid;
   /* minmax(0, ...) lets long titles wrap instead of widening the column past the screen. */
@@ -1116,6 +1185,11 @@ button {
    redefined with light and opacity only. Board.tsx still gets its 'ember-away' end event. */
 
 @media (prefers-reduced-motion: reduce) {
+  @keyframes fact-lit {
+    0% {
+      border-color: rgba(255, 210, 140, 0.9);
+    }
+  }
   @keyframes ignite {
     0% {
       opacity: 0;

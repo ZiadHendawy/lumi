@@ -273,7 +273,8 @@ def test_board_payload_matches_the_web_contract():
         "title": "Buy groceries",
         "fields": ["priority"],
     }
-    payload = json.loads(json.dumps(tools.board_payload(tasks, change)))
+    facts = {"favorite_color": "blue"}
+    payload = json.loads(json.dumps(tools.board_payload(tasks, change, facts)))
     assert payload == {
         "tasks": [
             {
@@ -295,9 +296,10 @@ def test_board_payload_matches_the_web_contract():
                 "updated_at": "2026-11-27T09:30:00+00:00",
             },
         ],
+        "facts": {"favorite_color": "blue"},
         "change": change,
     }
-    assert tools.board_payload([], None) == {"tasks": [], "change": None}
+    assert tools.board_payload([], None) == {"tasks": [], "facts": {}, "change": None}
 
 
 def test_instructions_show_today_board_and_facts():
@@ -459,6 +461,29 @@ async def test_board_push_sends_the_contract_payload(db, new_user):
     assert sent[1][1]["change"]["fields"] == ["priority", "target_date"]
     assert sent[1][1]["tasks"][0]["priority"] == "high"
     assert state.pushed_at is not None
+
+
+@needs_db
+async def test_fact_changes_reach_the_screen_without_a_change_note(db, new_user):
+    # The memory shelf on screen is drawn from the facts in every board push.
+    sent = []
+
+    async def send_text(text, *, topic):
+        sent.append(json.loads(text))
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
+    state = tools.SessionState(user_id=new_user(), db=db, room=room, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    await tools.remember_fact(ctx, key="Favorite Color", value="blue")
+    await tools.create_task(ctx, title="Call mom")
+    await tools.forget_fact(ctx, key="favorite color")
+
+    assert [p["facts"] for p in sent] == [
+        {"favorite_color": "blue"},
+        {"favorite_color": "blue"},
+        {},
+    ]
+    assert [p["change"] is None for p in sent] == [True, False, True]
 
 
 @needs_db

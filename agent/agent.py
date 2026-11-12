@@ -243,11 +243,12 @@ async def entrypoint(ctx: JobContext) -> None:
             turn["board_lead"] = round(lead, 3)
             state.pushed_at = None  # once per turn
 
-    # Fill the board on screen now, before the user clicks Start.
+    # Fill the board (and the facts Lumi remembers) on screen now, before Start.
     tasks = await memory.list_tasks(state.db, state.user_id)
-    await tools.push_board(state, tasks, change=None)
+    facts = await memory.load_facts(state.db, state.user_id)
+    await tools.push_board(state, tasks, change=None, facts=facts)
     agent = Lumi()
-    await tools.refresh_instructions(agent, state, tasks)
+    await tools.refresh_instructions(agent, state, tasks, facts)
 
     # The browser connects on page load to hide the cold start, but it can't play
     # audio until the user clicks. It calls this RPC on click, so the greeting is heard.

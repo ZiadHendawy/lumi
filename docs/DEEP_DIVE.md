@@ -294,6 +294,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 | Screen-reader live region | An `aria-live="polite"` list of the same receipts. The visual toasts are `aria-hidden`. | Each change is announced once. |
 | Captions | `userCaption` joins every user segment since Lumi last spoke (#15). Lumi's current line shows below. | A misheard word is easy to spot. |
 | Reduced motion | `prefers-reduced-motion` swaps the keyframes for gentler ones | Same information, less movement. |
+| Memory shelf | The facts ride in every board push; `changedFacts` lights only the chip that changed | "Remembers you" is visible too, not only spoken, and it shows the stored value, not the model's claim. |
 
 ### Bugs the live run found, all fixed
 

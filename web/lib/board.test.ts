@@ -7,6 +7,9 @@ import {
   type Task,
   addChange,
   cardChange,
+  changedFacts,
+  describeFactChanges,
+  factLabel,
   daysFromToday,
   describeChange,
   friendlyDate,
@@ -35,7 +38,13 @@ function task(id: number, overrides: Partial<Task> = {}): Task {
 
 test('parseBoard accepts a board and defaults a missing change to null', () => {
   const board = parseBoard(JSON.stringify({ tasks: [task(1)] }));
-  assert.deepEqual(board, { tasks: [task(1)], change: null });
+  assert.deepEqual(board, { tasks: [task(1)], facts: {}, change: null });
+});
+
+test('parseBoard keeps the facts, and ignores facts of the wrong shape', () => {
+  const facts = { favorite_color: 'blue' };
+  assert.deepEqual(parseBoard(JSON.stringify({ tasks: [], facts }))?.facts, facts);
+  assert.deepEqual(parseBoard(JSON.stringify({ tasks: [], facts: ['blue'] }))?.facts, {});
 });
 
 test('parseBoard keeps the change', () => {
@@ -240,4 +249,19 @@ test('a restore ends the ghost of the delete it undoes', () => {
   assert.equal(cardChange(recent, 1)?.change.action, 'restored');
   // The "say undo" receipt still fades out on its own time.
   assert.equal(recent.length, 2);
+});
+
+test('changedFacts lists new and changed facts, not the unchanged ones', () => {
+  const before = { favorite_color: 'blue', home_city: 'Riyadh' };
+  const after = { favorite_color: 'green', home_city: 'Riyadh', pet: 'cat' };
+  assert.deepEqual(changedFacts(before, after), ['favorite_color', 'pet']);
+  assert.deepEqual(changedFacts(after, after), []);
+});
+
+test('describeFactChanges words what was remembered and forgotten', () => {
+  assert.equal(factLabel('favorite_color'), 'favorite color');
+  assert.deepEqual(describeFactChanges({ home_city: 'Riyadh' }, { favorite_color: 'blue' }), [
+    'Remembered your favorite color: blue',
+    'Forgot your home city',
+  ]);
 });

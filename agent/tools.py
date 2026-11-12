@@ -59,21 +59,28 @@ class SessionState:
 
 
 async def refresh_instructions(
-    agent: Agent, state: SessionState, tasks: list[dict] | None = None
+    agent: Agent,
+    state: SessionState,
+    tasks: list[dict] | None = None,
+    facts: dict[str, str] | None = None,
 ) -> None:
     """Re-render the board and facts into the prompt, so the model reads the truth
-    instead of remembering it. Pass the board if you just read it: every query is a
-    network round trip, and the user is waiting on them."""
+    instead of remembering it. Pass what you just read: every query is a network
+    round trip, and the user is waiting on them."""
     if tasks is None:
         tasks = await memory.list_tasks(state.db, state.user_id)
-    facts = await memory.load_facts(state.db, state.user_id)
+    if facts is None:
+        facts = await memory.load_facts(state.db, state.user_id)
     await agent.update_instructions(
         prompt.build_instructions(state.today(), tasks, facts)
     )
 
 
-def board_payload(tasks: list[dict], change: dict | None) -> dict:
-    """The JSON the browser renders. Its shape is a contract with web/."""
+def board_payload(
+    tasks: list[dict], change: dict | None, facts: dict[str, str] | None = None
+) -> dict:
+    """The JSON the browser renders. Its shape is a contract with web/. The facts
+    ride along so the memory Lumi keeps is on screen too, not only in the prompt."""
     rows = []
     for t in tasks:
         due = t["target_date"]
@@ -88,17 +95,20 @@ def board_payload(tasks: list[dict], change: dict | None) -> dict:
                 "updated_at": t["updated_at"].isoformat(),
             }
         )
-    return {"tasks": rows, "change": change}
+    return {"tasks": rows, "facts": facts or {}, "change": change}
 
 
 async def push_board(
-    state: SessionState, tasks: list[dict], change: dict | None
+    state: SessionState,
+    tasks: list[dict],
+    change: dict | None,
+    facts: dict[str, str] | None = None,
 ) -> None:
     if state.room is None:
         return
     try:
         await state.room.local_participant.send_text(
-            json.dumps(board_payload(tasks, change)), topic=BOARD_TOPIC
+            json.dumps(board_payload(tasks, change, facts)), topic=BOARD_TOPIC
         )
         state.pushed_at = time.monotonic()
     except Exception:
@@ -107,22 +117,29 @@ async def push_board(
         logger.warning("board push failed", exc_info=True)
 
 
+async def publish(context: RunContext[SessionState], change: dict | None) -> None:
+    """After any change: read the board and facts once, send them to the screen,
+    then re-render the prompt from the same rows."""
+    state = context.userdata
+    async with state.lock:
+        # One read each serves both the screen and the prompt.
+        tasks = await memory.list_tasks(state.db, state.user_id)
+        facts = await memory.load_facts(state.db, state.user_id)
+        # Screen first, so it can update before Lumi starts speaking.
+        await push_board(state, tasks, change, facts)
+        await refresh_instructions(context.session.current_agent, state, tasks, facts)
+
+
 async def after_task_change(
     context: RunContext[SessionState], action: str, task: dict, fields: list[str]
 ) -> None:
-    state = context.userdata
     change = {
         "action": action,
         "task_id": task["id"],
         "title": task["title"],
         "fields": fields,
     }
-    async with state.lock:
-        # One read serves both the screen and the prompt (it used to be read twice).
-        tasks = await memory.list_tasks(state.db, state.user_id)
-        # Screen first, so it can update before Lumi starts speaking.
-        await push_board(state, tasks, change)
-        await refresh_instructions(context.session.current_agent, state, tasks)
+    await publish(context, change)
 
 
 # --- How tools talk about dates and tasks -------------------------------------
@@ -296,8 +313,9 @@ async def remember_fact(context: RunContext[SessionState], key: str, value: str)
     Saving an existing key replaces its value."""
     state = context.userdata
     fact = await memory.save_fact(state.db, state.user_id, fact_key(key), value.strip())
-    async with state.lock:
-        await refresh_instructions(context.session.current_agent, state)
+    # No change note: the browser compares the facts before and after to light the
+    # one that changed, so the task contract stays as it is.
+    await publish(context, change=None)
     return f"Saved {fact['key']} = {fact['value']}."
 
 
@@ -309,8 +327,7 @@ async def forget_fact(context: RunContext[SessionState], key: str) -> str:
         raise ToolError(
             f"No fact called {fact_key(key)} is saved. Nothing was changed."
         )
-    async with state.lock:
-        await refresh_instructions(context.session.current_agent, state)
+    await publish(context, change=None)
     return f"Forgot {fact_key(key)}."
 
 

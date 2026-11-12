@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import {
+  type Facts,
   type RecentChange,
   type Task,
   GROUP_LABELS,
   cardChange,
+  factLabel,
   friendlyDate,
   groupTasks,
   withGhosts,
@@ -13,6 +15,8 @@ import {
 
 type Props = {
   tasks: Task[];
+  facts: Facts; // what Lumi remembers about the user
+  factsChanged: { keys: string[]; seq: number; text: string[] }; // lit by the latest push
   recent: RecentChange[]; // changes still animating, oldest first
   seq: number; // bumps on every board the agent sends
   live: boolean; // false while showing the cached board from the last visit
@@ -23,7 +27,7 @@ type Props = {
 const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 
 // Pure view of the board. All animation is CSS, chosen by class names derived from `recent`.
-export default function Board({ tasks, recent, seq, live, onGhostGone, onReceiptDone }: Props) {
+export default function Board({ tasks, facts, factsChanged, recent, seq, live, onGhostGone, onReceiptDone }: Props) {
   const [showDone, setShowDone] = useState(false);
   const now = new Date();
 
@@ -100,6 +104,8 @@ export default function Board({ tasks, recent, seq, live, onGhostGone, onReceipt
         )}
       </div>
 
+      <Memory facts={facts} changed={factsChanged} />
+
       {isEmpty ? (
         <div className="empty">
           <p className="empty-title">Your board is dark.</p>
@@ -155,7 +161,37 @@ export default function Board({ tasks, recent, seq, live, onGhostGone, onReceipt
         {recent.map((r) => (
           <p key={r.seq}>{r.text}</p>
         ))}
+        {factsChanged.text.map((line) => (
+          <p key={`${factsChanged.seq}-${line}`}>{line}</p>
+        ))}
       </div>
+    </section>
+  );
+}
+
+// The memory shelf: the facts Lumi keeps across sessions, so "remembers you" is visible,
+// not only something Lumi says. A fact that just changed lights up like a new card.
+function Memory({ facts, changed }: { facts: Facts; changed: Props['factsChanged'] }) {
+  const keys = Object.keys(facts);
+  return (
+    <section className="memory" aria-label="What Lumi remembers">
+      <h2 className="memory-title">Lumi remembers</h2>
+      {keys.length === 0 ? (
+        <p className="memory-hint">nothing yet · try “my favorite color is blue”</p>
+      ) : (
+        <ul className="memory-facts">
+          {keys.map((key) => {
+            const lit = changed.keys.includes(key);
+            return (
+              // A fresh key restarts the glow when the same fact changes twice in a row.
+              <li key={lit ? `${key}-${changed.seq}` : key} className={lit ? 'fact is-lit' : 'fact'}>
+                <span className="fact-key">{factLabel(key)}</span>
+                <span className="fact-value">{facts[key]}</span>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </section>
   );
 }
