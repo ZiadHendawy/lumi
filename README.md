@@ -55,12 +55,13 @@ npm run dev                               # http://localhost:3000
 | `cd agent && uv run pytest` | Unit tests, no LLM. The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
 | `cd agent && uv run pytest -m "eval and core"` | The core conversation evals against the real LLM (17). Needs `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL`. | Groq quota. Runs on PRs that change `agent/`. |
 | `cd agent && uv run pytest -m eval` | The full eval suite (35) | ~100K Groq tokens, half the daily cap. On demand only: Actions → CI → Run workflow. |
-| `cd web && npm test` | Board helpers: payload parsing, date lanes, receipts, captions | Free. Runs on every push. |
+| `cd web && npm test` | Board helpers: payload parsing, date lanes, receipts, captions. Stats helpers: the password check, limit levels, percentiles | Free. Runs on every push. |
 
 ## Deploy
 
 - **Agent:** deploys automatically. CI runs `lk agent deploy` on every push to `main` that changes `agent/`, once the agent tests pass. Manual fallback: `cd agent && lk agent deploy`. Secrets live in LiveKit Cloud, not in the repo: the provider keys, `DATABASE_URL` and **`TAVILY_API_KEY`** (web search, free tier at app.tavily.com, no card). Add a missing one with `lk agent update-secrets --secrets KEY=VALUE`, and check with `lk agent secrets`.
 - **Web:** import the repo in Vercel with root directory `web/`, then set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. Every push deploys.
+- **Stats page (`/stats`):** free-plan limits and per-stage latency, behind a password. Vercel also needs `STATS_PASSWORD`, `STATS_DATABASE_URL` (the read-only `stats_reader` role on the production database, which can only `SELECT` the two metrics tables), `TAVILY_API_KEY`, and optionally `DEEPGRAM_USAGE_KEY` (a Deepgram key with `usage:read` and `billing:read`) for the credit balance.
 
 ## How the work is split
 

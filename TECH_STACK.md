@@ -192,11 +192,23 @@ The worker is a long-running Python process, so serverless platforms are out.
 
 | Option | Pros | Cons |
 |---|---|---|
-| ✅ **Structured logs + LiveKit Agents metrics** | Per-stage latency (end of speech → STT → LLM first token → TTS first byte) built in. Free. | No UI on top of it |
+| ✅ **Structured logs + LiveKit Agents metrics** | Per-stage latency (end of speech → STT → LLM first token → TTS first byte) built in. Free. | No UI on top of it (fixed by the `/stats` page below) |
 | Langfuse | LLM traces, prompt and tool-call inspection. Free cloud tier. | Another vendor. Mostly covers LLM calls only. |
 | OpenTelemetry + Grafana | Industry standard. Rich dashboards. | Setup cost too high for a 2-day build |
 
 **Pick: logs + built-in metrics.** Add Langfuse if the deep dive is guardrails or latency.
+
+**Added 2026-11-12: a `/stats` page in the web app** for the free-plan limits and the latency of each stage.
+
+| Where | Pros | Cons |
+|---|---|---|
+| ✅ **`/stats` page in the Next.js app (Vercel)** | Already deployed, free, ships with the same push. A server component, so keys and the database URL never reach the browser. The LiveKit server SDK is already there. | The web app now reads Neon (one new dependency) |
+| Grafana Cloud (free) | Real dashboards | A new vendor and query language: more to explain than to show |
+| LiveKit Cloud's dashboard | No work | Sessions only; knows nothing of the Groq, Gemini, Deepgram or Tavily caps |
+
+- **Data.** Groq and Gemini have no usage API on the free plans, so the agent records its own use: `provider_usage` (one row per LLM request, plus speech seconds and voice characters) and `turn_metrics` (each stage of a reply). The page sums them over the cap windows (last minute, rolling 24 h). The counts are complete because the production keys are only used by the live agent. Tavily (`GET /usage`, free) and LiveKit (`listRooms`) are asked live. Deepgram's balance needs a key with `usage:read` and `billing:read`, which the agent's key lacks, so it's optional (`DEEPGRAM_USAGE_KEY`).
+- **The web app reading Neon.** §14 rejected that for the board, because it would mean the tasks SQL twice in two languages. This is different: read-only metrics queries, through a `stats_reader` role that can only `SELECT` the two metrics tables (it is refused on `tasks` and `facts`). Driver: `@neondatabase/serverless` (no dependencies of its own).
+- **Access.** Basic auth in `proxy.ts` (Next 16's name for middleware) with `STATS_PASSWORD`, checked again in the page. The tables hold no user id and no words, only counts and timings.
 
 ---
 
@@ -243,7 +255,7 @@ The worker is a long-running Python process, so serverless platforms are out.
 
 | Option | Pros | Cons |
 |---|---|---|
-| ✅ **LiveKit text stream (`send_text`, topic `lumi.board`), the whole board as JSON** | Reuses the WebRTC connection we already have. No new service, no DB access from Vercel, one code path for SQL. No size cap. React side is one `registerTextStreamHandler`. | The board only updates while a session is connected (fine: changes only happen by voice, inside a session) |
+| ✅ **LiveKit text stream (`send_text`, topic `lumi.board`), the whole board as JSON** | Reuses the WebRTC connection we already have. No new service, no DB access from Vercel for tasks (the `/stats` page reads only the metrics tables, §10), one code path for SQL. No size cap. React side is one `registerTextStreamHandler`. | The board only updates while a session is connected (fine: changes only happen by voice, inside a session) |
 | Next.js `/api/tasks` route reading Neon | Board loads without the agent | The same SQL twice in two languages, a new DB driver dependency, and the browser polling or refreshing after each change |
 | LiveKit RPC agent → browser | Request/response, with acknowledgement | 15 KB payload cap. We don't need an answer back. |
 | Participant attributes | Automatically synced state | Small size limits. Meant for small key/value data, not lists. |

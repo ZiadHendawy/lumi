@@ -1,0 +1,210 @@
+/* The /stats page. Uses the board's tokens from globals.css (dark only), plus three
+   status colours for the meters. Text always stays in the paper colours: the colour of
+   a bar repeats what its number and words already say. */
+
+.page {
+  --ok: #0ca30c;
+  --near: #fab219;
+  --over: #d03b3b;
+
+  position: relative;
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 40px 16px 80px;
+}
+
+.header h1 {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 32px;
+}
+
+.section {
+  margin-top: 40px;
+}
+
+.section h2 {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-weight: 500;
+  font-size: 22px;
+}
+
+.subhead {
+  margin: 28px 0 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.muted {
+  margin: 0 0 12px;
+  color: var(--paper-dim);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  gap: 16px;
+  margin-top: 12px;
+}
+
+.card {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--glass);
+}
+
+.card h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.note {
+  margin: 2px 0 12px;
+  font-size: 13px;
+  color: var(--paper-faint);
+}
+
+.figure {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 26px;
+}
+
+/* ---------- Meters ---------- */
+
+.meter + .meter {
+  margin-top: 14px;
+}
+
+.meterLabel {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+
+.track {
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(255, 238, 214, 0.08);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 4px;
+  min-width: 2px; /* a zero still shows where the bar starts */
+}
+
+.fill.ok {
+  background: var(--ok);
+}
+.fill.near {
+  background: var(--near);
+}
+.fill.over {
+  background: var(--over);
+}
+
+.meterValue {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  margin: 6px 0 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The status word, with a dot in the status colour: never colour alone. */
+.flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.flag::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.flag.near::before {
+  background: var(--near);
+}
+.flag.over::before {
+  background: var(--over);
+}
+
+/* ---------- Tables ---------- */
+
+.scroll {
+  overflow-x: auto; /* a wide table scrolls inside itself on a phone, not the page */
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.table th,
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+}
+
+.table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--paper-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.table tbody th {
+  font-weight: 500;
+}
+
+.table .num {
+  text-align: right;
+}
+
+.hint {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--paper-faint);
+}
+
+.total th,
+.total td {
+  font-weight: 600;
+}
+
+/* One line per speech stage: name and model on the left, 24 h · 30 days on the right. */
+.usage {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.usage p {
+  margin: 0;
+}
+.usageValue {
+  font-variant-numeric: tabular-nums;
+}

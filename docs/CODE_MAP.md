@@ -40,6 +40,14 @@ One paragraph per file, then the contract between the agent and the browser, the
 
 **`lib/board.test.ts`**: 19 tests with Node's built-in runner (`npm test`), no extra dependencies. Payload parsing, date lanes across a daylight-saving switch, lane order, receipts, captions split into several segments, back-to-back changes and ghosts.
 
+**`app/stats/page.tsx`**: the `/stats` page, a server component rendered on every request. It checks the password again (`isAuthorized`) in case `proxy.ts`'s matcher ever changes, then loads six sources in parallel, each through `orNull` so one failing source blanks only its own card: `llmUsage` and `speechUsage` (sums over `provider_usage` for the last minute, 24 h and 30 days), `recentTurns` (`turn_metrics`, last 7 days), `liveSessions` (LiveKit `listRooms`, against `SESSION_LIMIT`), `searchCredits` (Tavily `GET /usage`) and `deepgramCredit` (only with `DEEPGRAM_USAGE_KEY`). It reads Neon through `STATS_DATABASE_URL`, a role that can only `SELECT` the metrics tables. `Meter` draws a cap as a bar plus its number and a status word; `Latency` shows each stage's median, 90th percentile and slowest in turn order, splits the whole-turn time into plain replies and tool turns, and lists the last 20 turns. Styles in `stats.module.css`.
+
+**`proxy.ts`**: Next 16's middleware. On `/stats` only, it answers 401 with `WWW-Authenticate: Basic` unless the password matches `STATS_PASSWORD`, so the browser shows its own sign-in box.
+
+**`lib/stats.ts`**: pure helpers for the stats page. `LLM_LIMITS` (the free caps per model, from TECH_STACK, in fallback order; Gemini's marked approximate), `SESSION_LIMIT`, `isAuthorized` (Basic auth; any user name, only the password counts, nobody gets in without one configured), `levelOf` (ok under 70%, near from 70%, over from 90%), `percentile` (same interpolation as Postgres `percentile_cont`) and `summarize` (a stage that didn't happen is left out, not counted as zero).
+
+**`lib/stats.test.ts`**: 7 tests for those helpers.
+
 **`lib/userId.ts`**: `getUserId` creates and remembers a random UUID in `localStorage`. It is the user's identity for memory, with no login.
 
 **`app/page.tsx`**: the page: the masthead and `VoiceSession`, loaded client-only, because `localStorage` doesn't exist during server rendering.
