@@ -37,6 +37,8 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run build
+      # Pure board helpers (date lanes, payload parsing): Node's built-in runner, no deps.
+      - run: npm test
 
   # Evals call the real LLM and spend Groq quota, so they run on PRs and on demand only.
   evals:
