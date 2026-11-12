@@ -209,11 +209,10 @@ async def bench_db(runs: int) -> None:
             )
             await timed("list_tasks SQL", memory.list_tasks(conn, user))
             await timed("load_facts SQL", memory.load_facts(conn, user))
-            # What the create_task tool waits on: insert, push_board's list, then
-            # refresh_instructions' list and facts. Four round trips, one after another.
+            # What the create_task tool waits on (tools.after_task_change): the insert,
+            # one read of the board for the screen and the prompt, then the facts.
             start = time.perf_counter()
             await memory.create_task(conn, user, "Bench")
-            await memory.list_tasks(conn, user)
             await memory.list_tasks(conn, user)
             await memory.load_facts(conn, user)
             times.setdefault("create_task tool, all SQL", []).append(

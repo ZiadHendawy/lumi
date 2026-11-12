@@ -428,6 +428,30 @@ async def test_board_push_sends_the_contract_payload(db, new_user):
 
 
 @needs_db
+async def test_a_task_change_costs_three_queries(db, new_user, monkeypatch):
+    # Each query is a network round trip the user waits through before Lumi speaks
+    # (~220 ms each from the dev machine): the insert, one board read shared by the
+    # screen and the prompt, and the facts. It was four before the read was shared.
+    async def send_text(text, *, topic):
+        pass
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
+    state = tools.SessionState(user_id=new_user(), db=db, room=room, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    queries = []
+    execute = db.execute
+
+    async def counting_execute(query, params=None):
+        queries.append(query)
+        return await execute(query, params)
+
+    monkeypatch.setattr(db, "execute", counting_execute)
+    await tools.create_task(ctx, title="Call mom")
+    assert len(queries) == 3
+    assert "Call mom" in ctx.session.current_agent.instructions
+
+
+@needs_db
 async def test_fact_tools_normalise_keys(db, new_user):
     state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
     ctx = fake_context(state)

@@ -55,10 +55,14 @@ class SessionState:
 # --- Keeping the prompt and the screen in sync with the database --------------
 
 
-async def refresh_instructions(agent: Agent, state: SessionState) -> None:
+async def refresh_instructions(
+    agent: Agent, state: SessionState, tasks: list[dict] | None = None
+) -> None:
     """Re-render the board and facts into the prompt, so the model reads the truth
-    instead of remembering it."""
-    tasks = await memory.list_tasks(state.db, state.user_id)
+    instead of remembering it. Pass the board if you just read it: every query is a
+    network round trip, and the user is waiting on them."""
+    if tasks is None:
+        tasks = await memory.list_tasks(state.db, state.user_id)
     facts = await memory.load_facts(state.db, state.user_id)
     await agent.update_instructions(
         prompt.build_instructions(state.today(), tasks, facts)
@@ -84,10 +88,11 @@ def board_payload(tasks: list[dict], change: dict | None) -> dict:
     return {"tasks": rows, "change": change}
 
 
-async def push_board(state: SessionState, change: dict | None) -> None:
+async def push_board(
+    state: SessionState, tasks: list[dict], change: dict | None
+) -> None:
     if state.room is None:
         return
-    tasks = await memory.list_tasks(state.db, state.user_id)
     try:
         await state.room.local_participant.send_text(
             json.dumps(board_payload(tasks, change)), topic=BOARD_TOPIC
@@ -110,9 +115,11 @@ async def after_task_change(
         "fields": fields,
     }
     async with state.lock:
+        # One read serves both the screen and the prompt (it used to be read twice).
+        tasks = await memory.list_tasks(state.db, state.user_id)
         # Screen first, so it can update before Lumi starts speaking.
-        await push_board(state, change)
-        await refresh_instructions(context.session.current_agent, state)
+        await push_board(state, tasks, change)
+        await refresh_instructions(context.session.current_agent, state, tasks)
 
 
 # --- How tools talk about dates and tasks -------------------------------------
