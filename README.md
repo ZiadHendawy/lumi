@@ -1,34 +1,73 @@
 # Lumi
 
-A voice assistant that listens, talks back, and remembers you. Plan: [PROJECT_PLAN.md](PROJECT_PLAN.md) · Stack: [TECH_STACK.md](TECH_STACK.md) · Code walkthrough: [docs/CODE_MAP.md](docs/CODE_MAP.md)
+**A task board you run by voice.** Tap the lantern and talk: "add call the bank tomorrow, high priority", "move it to next Friday", "mark it done", "undo". The board on screen changes while Lumi is still confirming out loud. It remembers your board and a few facts about you across sessions ("what's my favorite color?"), and it can look things up on the web and save the answer, with sources, into a task's notes.
+
+The look is "the lantern board": a dark board where a card's priority is how brightly it glows, done tasks are put out, and the talk button is a lantern that reacts to your voice and Lumi's.
+
+## How it works
+
+```
+Browser (Next.js, Vercel) ──token──▶ /api/token
+   │ WebRTC audio        ▲ "lumi.board" text stream: the whole board after every change
+   ▼                     │
+LiveKit Cloud ◀──▶ Agent (Python, LiveKit Agents, LiveKit Cloud)
+                     Deepgram STT → Groq gpt-oss-120b → gpt-oss-20b → Gemini Flash-Lite → Deepgram Aura TTS
+                     tools: tasks and facts (Neon Postgres), web search (Tavily)
+```
+
+The model only maps words to tool calls. Code owns the data: the agent is the only thing that touches the database, and after every change it reads the board back and pushes it to the browser. So the screen shows what was stored, not what the model said.
 
 ```
 agent/   Python LiveKit Agents worker (runs on LiveKit Cloud)
 web/     Next.js app + /api/token route (runs on Vercel)
+docs/    deep dives, code map, smoke checklist
 ```
 
+## Read next
+
+| Doc | What's in it |
+|---|---|
+| [docs/DEEP_DIVE.md](docs/DEEP_DIVE.md) | One theme, *voice control you can trust*, from three angles: [latency](docs/DEEP_DIVE.md#latency) (slow), [correctness](docs/DEEP_DIVE.md#correctness) (wrong), [voice-to-screen sync](docs/DEEP_DIVE.md#voice-to-screen-sync) (invisible). Measured results, what didn't work, how to reproduce. |
+| [docs/CODE_MAP.md](docs/CODE_MAP.md) | One paragraph per file, the agent-browser contract, and the life of one voice turn |
+| [PROJECT_PLAN.md](PROJECT_PLAN.md) | Milestones, the decision log (why each choice), risks |
+| [TECH_STACK.md](TECH_STACK.md) | Options compared for each layer, free-tier limits as measured |
+| [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md) | The 5-minute manual voice check, and its log |
+
 ## Run locally
+
 ```bash
 # agent: fill agent/.env.local from agent/.env.example
 cd agent
 uv sync
 uv run -m livekit.agents download-files   # VAD + turn-detector weights, once
-uv run agent.py dev              # connects to your LiveKit Cloud project
+uv run agent.py dev                       # connects to your LiveKit Cloud project
 
-# web: fill web/.env.local from web/.env.example
+# web: create web/.env.local with LIVEKIT_URL, LIVEKIT_API_KEY and LIVEKIT_API_SECRET
 cd web
 npm install
-npm run dev                      # http://localhost:3000
+npm run dev                               # http://localhost:3000
 ```
 
 ## Tests
-```bash
-cd agent
-uv run pytest          # unit tests (DB test needs TEST_DATABASE_URL)
-uv run pytest -m eval  # conversation evals against the real LLM (needs GROQ_API_KEY)
-```
-Manual voice check: [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md).
+
+| Command | What | Cost |
+|---|---|---|
+| `cd agent && uv run pytest` | Unit tests, no LLM. The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
+| `cd agent && uv run pytest -m "eval and core"` | The core conversation evals against the real LLM (17). Needs `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL`. | Groq quota. Runs on PRs that change `agent/`. |
+| `cd agent && uv run pytest -m eval` | The full eval suite (35) | ~100K Groq tokens, half the daily cap. On demand only: Actions → CI → Run workflow. |
+| `cd web && npm test` | Board helpers: payload parsing, date lanes, receipts, captions | Free. Runs on every push. |
 
 ## Deploy
-- **Agent:** deploys automatically. CI runs `lk agent deploy` on every push to `main` that changes `agent/`, once the agent tests pass. Manual fallback: `cd agent && lk agent deploy`. Agent secrets (provider keys, `DATABASE_URL`) live in LiveKit Cloud: `lk agent update-secrets`.
+
+- **Agent:** deploys automatically. CI runs `lk agent deploy` on every push to `main` that changes `agent/`, once the agent tests pass. Manual fallback: `cd agent && lk agent deploy`. Secrets live in LiveKit Cloud, not in the repo: the provider keys, `DATABASE_URL` and **`TAVILY_API_KEY`** (web search, free tier at app.tavily.com, no card). Add a missing one with `lk agent update-secrets --secrets KEY=VALUE`, and check with `lk agent secrets`.
 - **Web:** import the repo in Vercel with root directory `web/`, then set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. Every push deploys.
+
+## How the work is split
+
+One PR per related unit of change (for example "tasks SQL", "task tools and board push", "lantern board UI"), never one PR per milestone. Each PR carries its own tests, evals and CI changes, so its CI run shows the unit works on its own. PRs are stacked and merged in order:
+
+- **Base:** #1 plan → #10 LLM fallback → #6 CI
+- **Agent:** #7 → #9 → #11 → #12 → #13 → #14 → #16 → #17 → #18 → #19
+- **Web:** #2 → #3 → #4 → #5 → #15
+
+Everything runs on free tiers.

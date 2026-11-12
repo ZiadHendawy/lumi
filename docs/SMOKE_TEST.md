@@ -3,11 +3,11 @@
 Run on the **live URL** at the end of each milestone, on desktop Chrome and one phone. Write the date and result in the log at the bottom.
 
 ## M0
-- [ ] Open the URL in a fresh tab. It shows "Lumi is waking up…", then "Lumi is ready." Note the cold-start time.
-- [ ] Click **Start talking** and allow the mic. Lumi greets you out loud.
+- [ ] Open the URL in a fresh tab. It shows "Lumi is waking up…", then "Tap the lantern to talk". Note the cold-start time.
+- [ ] Tap the lantern and allow the mic. Lumi greets you out loud.
 - [ ] Ask a question. Lumi answers by voice in one to three sentences.
 - [ ] Interrupt Lumi mid-sentence. It stops and listens.
-- [ ] Click **End**. The status shows "Session ended".
+- [ ] Click **End**. The status shows "Session ended · tap to talk again".
 - [ ] `lk agent logs` shows `turn latency` lines with `e2e_latency`, `llm_ttft` and `tts_ttfb`.
 
 ## M1: the board by voice
@@ -31,9 +31,18 @@ Run on the **live URL** at the end of each milestone, on desktop Chrome and one 
 - [ ] Lantern states: waking → ready → listening (reacts to your voice) → thinking → speaking (reacts to Lumi's voice).
 - [ ] Captions show what you said and what Lumi is saying.
 - [ ] Phone (390 px wide): no horizontal scroll, and the lantern never covers the last card.
-- [ ] `lk agent logs`: `turn latency` lines, tool timings, and `board ahead of voice` lines.
+- [ ] `lk agent logs`: `turn latency` lines, `tool call` lines with their time, and `board push to speech` lines (how far the screen led the voice).
+
+## Reliability, logs and secrets
+- [ ] `lk agent secrets` lists `TAVILY_API_KEY` (with the provider keys and `DATABASE_URL`). If it's missing, add it before deploying: `lk agent update-secrets --secrets TAVILY_API_KEY=...`.
+- [ ] Startup lines in the logs, in order: `database connected`, `room connected`, `session ready`, then `start clicked` with the browser's timezone on the tap. If `database connected` comes after `room connected`, Neon is what keeps the lantern waiting.
+- [ ] Every user turn logs `user turn latency` (`transcription_delay`, `end_of_turn_delay`), and every reply logs `turn latency` with the model that answered.
+- [ ] Every board change logs `board push to speech` with a positive number of seconds (the board landed before the voice).
+- [ ] Greeting with gpt-oss capped (local): `GROQ_API_KEY=invalid uv run agent.py dev`, open the local web app and tap the lantern. Lumi still greets you at once (fixed text, no LLM call). "Add a task to call the bank" still works, on Gemini, more slowly.
+- [ ] Sorry line when every model fails (local): `GROQ_API_KEY=invalid GEMINI_API_KEY=invalid uv run agent.py dev`, tap the lantern, say anything. Lumi says "Sorry, my thinking is overloaded for a moment…" and the lantern goes back to listening, instead of sitting on "thinking".
 
 ## Log
 | Date | Milestone | Desktop | Mobile | Cold start | Notes |
 |---|---|---|---|---|---|
 | 2026-11-11 | M0 | ✅ Chrome: connect, greet, Q&A and interrupt all work | ✅ passed | warm (agent already up) | ❌→✅ "Do you hear me?" got "I can only use text". Fixed in the prompt and covered by a 5-phrasing eval. Latency over 13 turns: user stops talking → reply starts 0.63–2.56 s (median ~0.9 s), LLM first token ~0.3 s, TTS first audio ~0.06 s |
+| 2026-11-12 | M1–M3, **local agent, not the deployed URL** | Chrome driven by Playwright, real audio (macOS `say` WAVs through a `getUserMedia` stand-in), 10 turns. gpt-oss-120b was capped, so turns ran on qwen or Gemini. | not recorded | no cold start (local agent). Reload: cached board at once, live board 8.8 s later | The board reached the screen before Lumi's voice in every turn, by 1.3–6.4 s (agent log and browser agree). Board changed 2.2–4.4 s after the user stopped talking; speech started 3.2–10.8 s after. The database matched the screen after create, note, move, done, delete and undo. Found and fixed: no greeting on fallback models (#17), silence when every model failed (#18), caption showed only the last segment (#15), back-to-back changes wiped each other's highlight (#15). Still to do: this checklist on the deployed URL and a phone. |
