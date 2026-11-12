@@ -302,6 +302,128 @@ button {
   color: var(--paper);
 }
 
+/* The memory panel: what Lumi keeps about you, where, and controls to change it.
+   The dialog itself shares the Connections panel's look (see .connections). */
+.memory-open {
+  align-self: center;
+}
+.memory-panel-about {
+  display: grid;
+  gap: 6px;
+  margin: 10px 0 8px;
+  padding: 0 0 0 16px;
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+.memory-panel-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 13px;
+  text-align: left;
+  color: var(--amber);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.memory-panel-facts {
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--line);
+}
+.memory-panel-facts li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 14px;
+}
+.memory-panel-facts .fact-value {
+  flex: 1;
+  min-width: 8ch;
+}
+.memory-panel-small,
+.memory-panel-forget-all {
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  font-size: 12px;
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+.memory-panel-small:hover:not(:disabled),
+.memory-panel-forget-all:hover:not(:disabled) {
+  color: var(--paper);
+  background: rgba(255, 238, 214, 0.1);
+}
+.memory-panel-form {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 16px;
+}
+.memory-panel-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.memory-panel-form input {
+  width: 100%;
+  min-width: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 206, 150, 0.17);
+  background: rgba(0, 0, 0, 0.3);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--paper);
+}
+.memory-panel-form input:focus {
+  outline: none;
+  border-color: var(--amber);
+}
+.memory-panel-save {
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 181, 71, 0.5);
+  background: rgba(255, 181, 71, 0.14);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--amber);
+  cursor: pointer;
+}
+.memory-panel-save:disabled,
+.memory-panel-small:disabled,
+.memory-panel-forget-all:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.memory-panel-note {
+  min-height: 1.4em;
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--paper-faint);
+}
+.memory-panel-forget-all {
+  margin-top: 12px;
+}
+@media (max-width: 480px) {
+  /* Name and value stacked, the button under them. */
+  .memory-panel-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Just remembered: the chip catches the lantern's light, then settles. */
 .fact.is-lit {
   animation: fact-lit 2.4s ease-out;
@@ -1587,7 +1709,9 @@ button {
   white-space: nowrap;
 }
 
-.connections-open {
+/* The Connections and memory panel buttons, and the two panels, share one look. */
+.connections-open,
+.memory-open {
   flex-shrink: 0;
   padding: 4px 11px;
   border-radius: 999px;
@@ -1603,7 +1727,8 @@ button {
     background 0.2s,
     color 0.2s;
 }
-.connections-open:hover {
+.connections-open:hover,
+.memory-open:hover {
   background: rgba(255, 238, 214, 0.1);
   color: var(--paper);
 }
@@ -1636,7 +1761,8 @@ button {
 }
 
 /* The panel: a native <dialog>, so the browser draws it in the top layer, above the vignette. */
-.connections {
+.connections,
+.memory-panel {
   width: min(460px, calc(100vw - 32px));
   max-height: min(86svh, 720px);
   padding: 0; /* padding lives on the inner div, so a click on the dialog itself is the backdrop */
@@ -1650,16 +1776,19 @@ button {
     0 30px 60px -20px rgba(0, 0, 0, 0.9);
   overflow: auto; /* tall content scrolls inside the panel on a short phone screen */
 }
-.connections::backdrop {
+.connections::backdrop,
+.memory-panel::backdrop {
   background: rgba(6, 5, 4, 0.72);
   backdrop-filter: blur(3px);
 }
 
-.connections-inner {
+.connections-inner,
+.memory-panel-inner {
   padding: 20px 22px 24px;
 }
 
-.connections-head {
+.connections-head,
+.memory-panel-head {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1667,7 +1796,8 @@ button {
   margin-bottom: 6px;
 }
 
-.connections-title {
+.connections-title,
+.memory-panel-title {
   margin: 0;
   font-family: var(--font-display);
   font-variation-settings: 'SOFT' 100;
@@ -1675,7 +1805,8 @@ button {
   font-size: 22px;
 }
 
-.connections-close {
+.connections-close,
+.memory-panel-close {
   padding: 4px 11px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -1684,7 +1815,8 @@ button {
   color: var(--paper-dim);
   cursor: pointer;
 }
-.connections-close:hover {
+.connections-close:hover,
+.memory-panel-close:hover {
   color: var(--paper);
   background: rgba(255, 238, 214, 0.1);
 }
@@ -1808,10 +1940,12 @@ button {
 
 /* On a phone the panel takes a little more of the width, so names stay on one line at 360 px. */
 @media (max-width: 480px) {
-  .connections {
+  .connections,
+  .memory-panel {
     width: calc(100vw - 24px);
   }
-  .connections-inner {
+  .connections-inner,
+  .memory-panel-inner {
     padding: 18px 16px 20px;
   }
   .connections-row {

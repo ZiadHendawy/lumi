@@ -10,7 +10,6 @@ import {
   GROUP_LABELS,
   cardChange,
   dotIgnites,
-  factLabel,
   friendlyDate,
   groupTasks,
   nightLabel,
@@ -20,6 +19,7 @@ import {
   withGhosts,
 } from '@/lib/board';
 import Connections, { CalendarLink } from './Connections';
+import Memory, { type MemoryEdit } from './Memory';
 
 type Props = {
   tasks: Task[];
@@ -32,12 +32,15 @@ type Props = {
   spoken: number[]; // tasks Lumi is naming right now (read-along)
   onGhostGone: (seq: number) => void; // a deleted card has drifted away
   onReceiptDone: (seq: number) => void; // a receipt toast has faded out
+  onEditMemory: ((edit: MemoryEdit) => Promise<void>) | null; // null while no agent can take it
+  onShowPrompt: () => void; // opens X-ray at "What Lumi sees"
 };
 
 const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 
 // Pure view of the board. All animation is CSS, chosen by class names derived from `recent`.
-export default function Board({ tasks, facts, factsChanged, recent, seq, live, working, spoken, onGhostGone, onReceiptDone }: Props) {
+export default function Board(props: Props) {
+  const { tasks, facts, factsChanged, recent, seq, live, working, spoken, onGhostGone, onReceiptDone } = props;
   const [showDone, setShowDone] = useState(false);
   const now = new Date();
 
@@ -121,7 +124,7 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
         <Connections tasks={tasks} />
       </div>
 
-      <Memory facts={facts} changed={factsChanged} />
+      <Memory facts={facts} changed={factsChanged} onEdit={props.onEditMemory} onShowPrompt={props.onShowPrompt} />
 
       {!isEmpty && <NightStrip tasks={tasks} recent={recent} now={now} />}
 
@@ -191,33 +194,6 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
           <p key={`${factsChanged.seq}-${line}`}>{line}</p>
         ))}
       </div>
-    </section>
-  );
-}
-
-// The memory shelf: the facts Lumi keeps across sessions, so "remembers you" is visible,
-// not only something Lumi says. A fact that just changed lights up like a new card.
-function Memory({ facts, changed }: { facts: Facts; changed: Props['factsChanged'] }) {
-  const keys = Object.keys(facts);
-  return (
-    <section className="memory" aria-label="What Lumi remembers">
-      <h2 className="memory-title">Lumi remembers</h2>
-      {keys.length === 0 ? (
-        <p className="memory-hint">nothing yet · try “my favorite color is blue”</p>
-      ) : (
-        <ul className="memory-facts">
-          {keys.map((key) => {
-            const lit = changed.keys.includes(key);
-            return (
-              // A fresh key restarts the glow when the same fact changes twice in a row.
-              <li key={lit ? `${key}-${changed.seq}` : key} className={lit ? 'fact is-lit' : 'fact'}>
-                <span className="fact-key">{factLabel(key)}</span>
-                <span className="fact-value">{facts[key]}</span>
-              </li>
-            );
-          })}
-        </ul>
-      )}
     </section>
   );
 }

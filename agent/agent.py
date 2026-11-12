@@ -34,6 +34,9 @@ import tools
 load_dotenv(".env.local")
 logger = logging.getLogger("lumi")
 
+# Our own RPC error code for a refused memory edit (LiveKit reserves 1001-1999).
+MEMORY_EDIT_REFUSED = 2000
+
 
 class Lumi(Agent):
     def __init__(self) -> None:
@@ -306,6 +309,23 @@ async def entrypoint(ctx: JobContext) -> None:
     # The browser shows Start once the session is running (agent state "listening"),
     # so a click can't arrive before this is registered.
     ctx.room.local_participant.register_rpc_method("lumi.start", on_start)
+
+    # Typed edits from the browser's memory panel. They go through the agent, like a
+    # spoken "remember that…", so the agent stays the database's only writer and the
+    # prompt is re-rendered at once. The board push that follows updates the panel.
+    async def on_memory_edit(data: rtc.RpcInvocationData) -> str:
+        # Only the user this session belongs to edits its memory.
+        if data.caller_identity != state.user_id:
+            raise rtc.RpcError(MEMORY_EDIT_REFUSED, "Not your memory.")
+        try:
+            await tools.edit_memory(agent, state, data.payload)
+        except tools.MemoryEditRefused as refused:
+            # The message reaches the browser, which shows it under the form.
+            raise rtc.RpcError(MEMORY_EDIT_REFUSED, str(refused)) from None
+        logger.info("memory edited", extra={"bytes": len(data.payload)})
+        return "ok"
+
+    ctx.room.local_participant.register_rpc_method("lumi.memory", on_memory_edit)
 
     # Hard cap per visitor, also covers someone who loads the page and never clicks Start.
     asyncio.get_running_loop().call_later(

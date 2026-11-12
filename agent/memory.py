@@ -173,6 +173,12 @@ async def forget_fact(conn: psycopg.AsyncConnection, user_id: str, key: str) -> 
     return await cur.fetchone() is not None
 
 
+async def forget_all_facts(conn: psycopg.AsyncConnection, user_id: str) -> int:
+    """The memory panel's "Forget everything". Returns how many facts were deleted."""
+    cur = await conn.execute("DELETE FROM facts WHERE user_id = %s", (user_id,))
+    return cur.rowcount
+
+
 # --- Metrics for the /stats page ----------------------------------------------
 
 

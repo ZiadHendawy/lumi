@@ -126,14 +126,19 @@ async def push_board(
 async def publish(context: RunContext[SessionState], change: dict | None) -> None:
     """After any change: read the board and facts once, send them to the screen,
     then re-render the prompt from the same rows."""
-    state = context.userdata
+    await publish_for(context.session.current_agent, context.userdata, change)
+
+
+async def publish_for(agent: Agent, state: SessionState, change: dict | None) -> None:
+    """`publish` for callers outside a tool call (a typed memory edit), which have the
+    agent and the state but no RunContext."""
     async with state.lock:
         # One read each serves both the screen and the prompt.
         tasks = await memory.list_tasks(state.db, state.user_id)
         facts = await memory.load_facts(state.db, state.user_id)
         # Screen first, so it can update before Lumi starts speaking.
         await push_board(state, tasks, change, facts)
-        await refresh_instructions(context.session.current_agent, state, tasks, facts)
+        await refresh_instructions(agent, state, tasks, facts)
 
 
 def activity_payload(update) -> dict | None:
@@ -345,11 +350,25 @@ def fact_key(key: str) -> str:
     return key.strip().lower().replace(" ", "_")
 
 
+def fact_problem(key: str, value: str) -> str | None:
+    """Why a fact can't be saved, or None. Shared by the spoken and the typed path."""
+    if not key or not value:
+        return "A fact needs a name and a value."
+    if len(key) > config.MAX_FACT_KEY_CHARS or len(value) > config.MAX_FACT_VALUE_CHARS:
+        return (
+            f"Keep a fact short: a name of up to {config.MAX_FACT_KEY_CHARS} characters"
+            f" and a value of up to {config.MAX_FACT_VALUE_CHARS}."
+        )
+    return None
+
+
 @function_tool
 async def remember_fact(context: RunContext[SessionState], key: str, value: str) -> str:
     """Save a fact about the user for future sessions, e.g. key favorite_color.
     Saving an existing key replaces its value."""
     state = context.userdata
+    if problem := fact_problem(fact_key(key), value.strip()):
+        raise ToolError(problem + " Nothing was saved.")
     fact = await memory.save_fact(state.db, state.user_id, fact_key(key), value.strip())
     # No change note: the browser compares the facts before and after to light the
     # one that changed, so the task contract stays as it is.
@@ -367,6 +386,48 @@ async def forget_fact(context: RunContext[SessionState], key: str) -> str:
         )
     await publish(context, change=None)
     return f"Forgot {fact_key(key)}."
+
+
+# --- Typed memory edits (the browser's memory panel) ---------------------------
+
+
+class MemoryEditRefused(Exception):
+    """A typed edit that breaks a rule. Its message is shown to the user as it is."""
+
+
+async def edit_memory(agent: Agent, state: SessionState, payload: str) -> None:
+    """One edit from the memory panel, sent on the `lumi.memory` RPC:
+    {"action": "remember", "key", "value"}, {"action": "forget", "key"} or
+    {"action": "forget_all"}. It takes the same path as a spoken fact, a write and then
+    `publish_for`, so the database keeps one writer and the screen and the prompt update
+    together: a fact typed now is one Lumi can use in its next reply."""
+    try:
+        edit = json.loads(payload)
+        action = edit["action"]
+    except (ValueError, KeyError, TypeError):
+        raise MemoryEditRefused("That edit didn't make sense.") from None
+
+    if action == "remember":
+        key = fact_key(str(edit.get("key", "")))
+        value = str(edit.get("value", "")).strip()
+        if problem := fact_problem(key, value):
+            raise MemoryEditRefused(problem)
+        facts = await memory.load_facts(state.db, state.user_id)
+        if key not in facts and len(facts) >= config.MAX_FACTS:
+            raise MemoryEditRefused(
+                f"Lumi keeps up to {config.MAX_FACTS} facts. Forget one first."
+            )
+        await memory.save_fact(state.db, state.user_id, key, value)
+    elif action == "forget":
+        # Forgetting a fact that's already gone is fine: the result is the same.
+        await memory.forget_fact(
+            state.db, state.user_id, fact_key(str(edit.get("key", "")))
+        )
+    elif action == "forget_all":
+        await memory.forget_all_facts(state.db, state.user_id)
+    else:
+        raise MemoryEditRefused("That edit didn't make sense.")
+    await publish_for(agent, state, change=None)
 
 
 # --- Web search (Tavily) ------------------------------------------------------

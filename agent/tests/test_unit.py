@@ -892,3 +892,92 @@ async def test_a_fixed_phrase_skips_the_llm(monkeypatch):
     )
     agent.llm_node(ctx, [], None)
     assert len(asked) == 2
+
+
+# --- Typed memory edits (the memory panel, RPC lumi.memory) -------------------
+
+
+@needs_db
+async def test_typed_memory_edits_take_the_spoken_path(db, new_user):
+    # A typed fact must reach the screen and the prompt exactly like a spoken one.
+    sent = []
+
+    async def send_text(text, *, topic):
+        if topic == "lumi.board":
+            sent.append(json.loads(text))
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
+    state = tools.SessionState(user_id=new_user(), db=db, room=room, fixed_today=FRIDAY)
+    agent = Lumi()
+    edit = json.dumps
+    await tools.edit_memory(
+        agent,
+        state,
+        edit({"action": "remember", "key": "Home City", "value": " Riyadh "}),
+    )
+    assert "home_city = Riyadh" in agent.instructions
+    await tools.edit_memory(
+        agent, state, edit({"action": "remember", "key": "pet", "value": "a cat"})
+    )
+    await tools.edit_memory(
+        agent, state, edit({"action": "forget", "key": "home city"})
+    )
+    # Forgetting what is already gone is not an error: the result is the same.
+    await tools.edit_memory(
+        agent, state, edit({"action": "forget", "key": "home city"})
+    )
+    assert [p["facts"] for p in sent] == [
+        {"home_city": "Riyadh"},
+        {"home_city": "Riyadh", "pet": "a cat"},
+        {"pet": "a cat"},
+        {"pet": "a cat"},
+    ]
+    assert all(p["change"] is None for p in sent)
+
+    await tools.edit_memory(agent, state, edit({"action": "forget_all"}))
+    assert await memory.load_facts(db, state.user_id) == {}
+    assert "Saved facts: none" in agent.instructions
+
+
+@needs_db
+async def test_typed_memory_edits_refuse_what_breaks_the_rules(
+    db, new_user, monkeypatch
+):
+    state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
+    agent = Lumi()
+
+    async def refused(payload, match):
+        with pytest.raises(tools.MemoryEditRefused, match=match):
+            await tools.edit_memory(agent, state, payload)
+
+    await refused("{nope", "didn't make sense")
+    await refused("[1, 2]", "didn't make sense")
+    await refused(json.dumps({"action": "drop_table"}), "didn't make sense")
+    await refused(
+        json.dumps({"action": "remember", "key": "pet", "value": " "}), "needs"
+    )
+    too_long = "x" * (config.MAX_FACT_VALUE_CHARS + 1)
+    await refused(
+        json.dumps({"action": "remember", "key": "pet", "value": too_long}), "short"
+    )
+
+    # Every fact is in every prompt, so the count is capped; replacing one still works.
+    monkeypatch.setattr(config, "MAX_FACTS", 1)
+    remember = {"action": "remember", "key": "pet", "value": "a cat"}
+    await tools.edit_memory(agent, state, json.dumps(remember))
+    await tools.edit_memory(agent, state, json.dumps({**remember, "value": "a dog"}))
+    await refused(
+        json.dumps({"action": "remember", "key": "city", "value": "Riyadh"}), "up to 1"
+    )
+    assert await memory.load_facts(db, state.user_id) == {"pet": "a dog"}
+
+
+@needs_db
+async def test_spoken_facts_have_the_same_length_limit(db, new_user):
+    state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    with pytest.raises(ToolError, match="Nothing was saved"):
+        await tools.remember_fact(
+            ctx, key="life_story", value="x" * (config.MAX_FACT_VALUE_CHARS + 1)
+        )
+    assert await memory.load_facts(db, state.user_id) == {}

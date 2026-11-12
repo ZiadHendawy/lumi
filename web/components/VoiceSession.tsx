@@ -13,6 +13,7 @@ import {
   useTrackVolume,
 } from '@livekit/components-react';
 import Board from '@/components/Board';
+import type { MemoryEdit } from '@/components/Memory';
 import { XRay } from '@/components/XRay';
 import {
   type Activity,
@@ -235,6 +236,16 @@ export default function VoiceSession() {
     await session.start({ tracks: { microphone: { enabled: false } } });
   }
 
+  // A typed memory edit goes to the agent, the database's only writer. It answers once the
+  // fact is saved; the board push that follows updates the shelf, as for a spoken fact.
+  async function editMemory(edit: MemoryEdit) {
+    await session.room.localParticipant.performRpc({
+      destinationIdentity: agent.identity!,
+      method: 'lumi.memory',
+      payload: JSON.stringify(edit),
+    });
+  }
+
   async function toggleMute() {
     await session.room.localParticipant.setMicrophoneEnabled(muted);
     setMuted(!muted);
@@ -301,6 +312,9 @@ export default function VoiceSession() {
         spoken={state === 'speaking' ? spoken : []}
         onGhostGone={ghostGone}
         onReceiptDone={receiptDone}
+        // The agent has registered the edit RPC once it is ready; it's gone after an end.
+        onEditMemory={state === 'waking' || state === 'ended' || state === 'failed' ? null : editMemory}
+        onShowPrompt={() => setXray(true)}
       />
 
       <button

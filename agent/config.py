@@ -22,6 +22,12 @@ MAX_HISTORY_ITEMS = 20
 # Notes are cut to this many characters in the prompt: enough to tell tasks apart,
 # without paying for long notes on every request.
 NOTES_PREVIEW_CHARS = 60
+# Every saved fact is in every LLM request's prompt, so the memory is capped: 20 facts
+# of up to 40 + 120 characters is at most ~800 tokens per request on a 200K-a-day quota.
+# The count is only checked for typed edits: speaking 20 facts takes a while, pasting doesn't.
+MAX_FACTS = 20
+MAX_FACT_KEY_CHARS = 40
+MAX_FACT_VALUE_CHARS = 120
 
 # Tavily web search. Free tier: 1,000 credits a month; a basic search costs 1.
 SEARCH_URL = "https://api.tavily.com/search"

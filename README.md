@@ -7,7 +7,7 @@ The look is "the lantern board": a dark board where a card's priority is how bri
 ## On the page
 
 - **The board** lights the card that changed, and only the field that changed, before Lumi finishes saying it. A delete drifts away with an undo hint.
-- **Lumi remembers** shows the facts Lumi keeps across sessions, and the one just remembered lights up.
+- **Lumi remembers** shows the facts Lumi keeps across sessions, and the one just remembered lights up. **Edit** opens the memory panel: add, change or forget a fact by typing (it goes through Lumi, like a spoken one), forget everything, and read what is kept, where, and a link to the exact prompt.
 - **The 14-day night strip** shows the same calendar the model reads to turn "next Friday" into a date, one glowing dot per task.
 - **Source chips:** links from a web search show as small chips naming the site.
 - **Read-along:** the caption highlights the word being spoken, and a card lights up while Lumi says its title.
