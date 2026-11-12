@@ -933,6 +933,31 @@ button {
   color: var(--paper);
   text-shadow: 0 0 24px rgba(255, 170, 70, 0.25);
 }
+/* Ideas for what to say, picked from the board, before the first words of a session. */
+.hints {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: baseline;
+  gap: 6px 8px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--paper-dim);
+  animation: caption-in 0.45s ease-out;
+}
+.hints-label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.hint {
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+}
+
 /* The word Lumi is saying now: the newest word of a caption that grows with the audio. */
 .word-now {
   color: #ffe2b0;

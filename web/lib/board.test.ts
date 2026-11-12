@@ -19,6 +19,7 @@ import {
   groupOf,
   groupTasks,
   parseBoard,
+  suggestions,
   splitLastWord,
   spokenTaskIds,
   userCaption,
@@ -273,6 +274,25 @@ test('spokenTaskIds lights the tasks whose whole title Lumi has said', () => {
 test('splitLastWord separates the word being spoken', () => {
   assert.deepEqual(splitLastWord('Done, call the bank '), ['Done, call the ', 'bank']);
   assert.deepEqual(splitLastWord('Done'), ['', 'Done']);
+});
+
+test('suggestions come from the board, at most three', () => {
+  // NOW is Thursday 12 November 2026.
+  assert.deepEqual(suggestions([], {}, NOW), ['Add a task to call mom tomorrow', 'My favorite color is blue']);
+  const board = [
+    task(1, { title: 'Book dentist', target_date: '2026-11-11' }),
+    task(2, { title: 'Call the bank', target_date: '2026-11-12' }),
+    task(3, { title: 'Plan the trip' }),
+  ];
+  assert.deepEqual(suggestions(board, {}, NOW), ['What’s overdue?', 'Brief me on today', 'Move “Plan the trip” to Friday']);
+  assert.deepEqual(suggestions([task(3, { title: 'Plan the trip' })], { home_city: 'Riyadh' }, NOW), [
+    'Move “Plan the trip” to Friday',
+  ]);
+  assert.deepEqual(suggestions([task(4, { title: 'Pay rent', target_date: '2026-11-20' })], {}, NOW), [
+    'Mark “Pay rent” done',
+    'My favorite color is blue',
+  ]);
+  assert.deepEqual(suggestions([task(5, { done: true })], { a: 'b' }, NOW).length, 2); // all done: start fresh
 });
 
 test('changedFacts lists new and changed facts, not the unchanged ones', () => {

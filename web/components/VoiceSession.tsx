@@ -30,6 +30,7 @@ import {
   saveCachedBoard,
   splitLastWord,
   spokenTaskIds,
+  suggestions,
   userCaption,
 } from '@/lib/board';
 import { type Turn, parseTurn } from '@/lib/turns';
@@ -186,14 +187,6 @@ export default function VoiceSession() {
     if (agent.state === 'speaking' || agent.state === 'listening') boardAt.current = null;
   }, [agent.state]);
 
-  // X opens the X-ray panel. Ignored with a modifier, so browser shortcuts keep working.
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) {
-      if (e.key.toLowerCase() === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey) setXray((open) => !open);
-    }
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   // Connect (and dispatch the agent) on page load, so the cold start overlaps with the
   // user reading the page. The mic stays off until they tap the lantern.
@@ -266,6 +259,29 @@ export default function VoiceSession() {
 
   const talking = state === 'listening' || state === 'thinking' || state === 'speaking' || state === 'muted';
   const onLanternClick = state === 'ready' ? startTalking : state === 'ended' || state === 'failed' ? wakeAgain : undefined;
+
+  // Keyboard: Space does what the lantern does (start, or mute and unmute while talking), Esc
+  // ends the session, X opens the X-ray panel. Ignored with a modifier (browser shortcuts), on a
+  // focused control (Space already clicks it) and while the Connections dialog is open.
+  // Re-registered each render, so it always sees the current state.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+      if (e.target instanceof HTMLElement && e.target.closest('button, a, input, textarea, dialog')) return;
+      if (e.key === ' ') {
+        e.preventDefault(); // otherwise the page scrolls
+        if (talking) toggleMute();
+        else onLanternClick?.();
+      } else if (e.key === 'Escape' && talking) {
+        session.end();
+      } else if (e.key.toLowerCase() === 'x') {
+        setXray((open) => !open);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
+
   // The lantern pulses with whoever is talking: the user's mic while listening, Lumi's voice while speaking.
   const volumeTrack =
     state === 'listening' ? session.local.microphoneTrack : state === 'speaking' ? agent.microphoneTrack : undefined;
@@ -290,7 +306,12 @@ export default function VoiceSession() {
         onReceiptDone={receiptDone}
       />
 
-      <button className="xray-toggle" onClick={() => setXray(!xray)} aria-pressed={xray}>
+      <button
+        className="xray-toggle"
+        onClick={() => setXray(!xray)}
+        aria-pressed={xray}
+        title="How Lumi works, live (X). Space talks or mutes, Esc ends."
+      >
         X-ray
       </button>
       {xray && <XRay turns={turns} leads={leads} prompt={prompt} onClose={() => setXray(false)} />}
@@ -299,7 +320,17 @@ export default function VoiceSession() {
         {state === 'ended' ? (
           <SessionReceipt turns={turns} leads={leads} changes={board.changes} undos={board.undos} />
         ) : (
-          <Captions session={session} tasks={board.tasks} onSpoken={setSpoken} />
+          <Captions
+            session={session}
+            tasks={board.tasks}
+            onSpoken={setSpoken}
+            // Ideas for what to say before the user has said anything. An empty board lists its own.
+            hints={
+              (state === 'ready' || state === 'listening') && board.tasks.length > 0
+                ? suggestions(board.tasks, board.facts, new Date())
+                : []
+            }
+          />
         )}
         <div className="lantern-row">
           <Lantern state={state} track={volumeTrack} onClick={onLanternClick} />
@@ -354,8 +385,13 @@ function Lantern(props: { state: LanternState; track?: TrackReference; onClick?:
 // The user's latest turn (dim) and Lumi's current line (bright), so a misheard word is easy to spot.
 // Lumi's line arrives in step with the audio (LiveKit syncs the transcript to the speech), so its
 // last word is the one being spoken: it gets the highlight, and the tasks named so far light up.
-function Captions(props: { session: UseSessionReturn; tasks: Task[]; onSpoken: (ids: number[]) => void }) {
-  const { session, tasks, onSpoken } = props;
+function Captions(props: {
+  session: UseSessionReturn;
+  tasks: Task[];
+  onSpoken: (ids: number[]) => void;
+  hints: string[];
+}) {
+  const { session, tasks, onSpoken, hints } = props;
   const { messages } = useSessionMessages(session);
   const user = userCaption(messages);
   const userAt = messages.findLastIndex((m) => m.type === 'userTranscript');
@@ -371,6 +407,16 @@ function Captions(props: { session: UseSessionReturn; tasks: Task[]; onSpoken: (
   const [said, now] = splitLastWord(lumi?.message ?? '');
   return (
     <div className="captions" aria-live="polite">
+      {!user && !lumi && hints.length > 0 && (
+        <p className="hints">
+          <span className="hints-label">Try</span>
+          {hints.map((h) => (
+            <span key={h} className="hint">
+              {h}
+            </span>
+          ))}
+        </p>
+      )}
       {user && (
         <p key={user.id} className="caption caption-user">
           {user.text}

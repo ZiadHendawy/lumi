@@ -4,6 +4,18 @@
 
 The look is "the lantern board": a dark board where a card's priority is how brightly it glows, done tasks are put out, and the talk button is a lantern that reacts to your voice and Lumi's.
 
+## On the page
+
+- **The board** lights the card that changed, and only the field that changed, before Lumi finishes saying it. A delete drifts away with an undo hint.
+- **Lumi remembers** shows the facts Lumi keeps across sessions, and the one just remembered lights up.
+- **The 14-day strip** (once its PR lands) shows the same calendar the model reads to turn "next Friday" into a date.
+- **Read-along:** the caption highlights the word being spoken, and a card lights up while Lumi says its title.
+- **Tool activity:** the lantern says "Searching the web…" during a search, and the card being searched breathes.
+- **X-ray** (press X) shows the last reply's timing stages, the model that answered, how far the screen led the voice, and the prompt exactly as the model reads it.
+- **Session receipt:** when you end a session, one card sums it up: replies, median time to voice, changes and undos, screen lead.
+- **Connections:** download your dated tasks as `.ics` or add one to Google Calendar, with no sign-in. Planned integrations are listed honestly.
+- **Keys:** Space talks or mutes, Esc ends, X opens X-ray. Before you speak, the dock suggests phrases that fit your board.
+
 ## How it works
 
 ```
@@ -84,5 +96,6 @@ One PR per related unit of change (for example "tasks SQL", "task tools and boar
 - **Base:** #1 plan → #10 LLM fallback → #6 CI
 - **Agent:** #7 → #9 → #11 → #12 → #13 → #14 → #16 → #17 → #18 → #19
 - **Web:** #2 → #3 → #4 → #5 → #15
+- **Polish, after M3** (one PR each, merged as they were done): #21 full notes, #22–#23 /stats, #24 memory shelf, #25 lantern icon, #26 cost model, #27 tool activity, #28 X-ray and receipt, #29 calendars and Connections, #30 read-along, then keys and suggestions.
 
 Everything runs on free tiers.

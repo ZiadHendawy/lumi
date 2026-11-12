@@ -290,6 +290,24 @@ export function splitLastWord(text: string): [string, string] {
   return [trimmed.slice(0, at), trimmed.slice(at)];
 }
 
+// --- Suggestions: what to try saying, picked from what is on the board right now.
+
+// Up to three phrases, so a first-time user sees what Lumi can do with *their* board
+// instead of a fixed list. Each rule needs the board to make the phrase true.
+export function suggestions(tasks: Task[], facts: Facts, now: Date): string[] {
+  const open = tasks.filter((t) => !t.done);
+  if (open.length === 0) return ['Add a task to call mom tomorrow', 'My favorite color is blue'];
+  const picks: string[] = [];
+  if (open.some((t) => groupOf(t, now) === 'overdue')) picks.push('What’s overdue?');
+  if (open.some((t) => groupOf(t, now) === 'today')) picks.push('Brief me on today');
+  const undated = open.find((t) => !t.target_date);
+  if (undated) picks.push(`Move “${undated.title}” to Friday`);
+  const first = open.find((t) => t !== undated);
+  if (first) picks.push(`Mark “${first.title}” done`);
+  if (Object.keys(facts).length === 0) picks.push('My favorite color is blue');
+  return picks.slice(0, 3);
+}
+
 // --- Captions: what the user said in their latest turn.
 
 // The fields of a LiveKit session message that the caption needs. Chat messages have no `type`.
