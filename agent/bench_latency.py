@@ -4,6 +4,7 @@
     uv run python bench_latency.py llm --bare     # persona only, no tools: prompt size
     uv run python bench_latency.py db --runs 5    # Neon round trips (TEST_DATABASE_URL)
     uv run python bench_latency.py push --runs 5  # board push through LiveKit Cloud
+    uv run python bench_latency.py tts --runs 5   # Aura's first audio for the greeting
 
 The LLM part sends Lumi's real instructions and tool schemas (built by prompt.py and
 the Lumi agent), but to one model at a time, so models can be compared. Each run is
@@ -22,9 +23,11 @@ import time
 import uuid
 from datetime import date, datetime
 
+import aiohttp
 from dotenv import load_dotenv
 from livekit import api, rtc
 from livekit.agents import APIConnectOptions, llm
+from livekit.plugins import deepgram
 
 import config
 import memory
@@ -266,9 +269,35 @@ async def bench_push(runs: int) -> None:
     print(f"  browser has the whole board             {summary(delivered)}")
 
 
+async def bench_tts(runs: int) -> None:
+    # The greeting, as the session streams it to Aura. Outside a LiveKit job there is no
+    # shared HTTP session, so the bench passes its own (same voice as config).
+    text = prompt.greeting(BOARD)
+    async with aiohttp.ClientSession() as http:
+        tts = deepgram.TTS(model=config.TTS_VOICE, http_session=http)
+        tts.prewarm()  # the session opens the voice's socket before the first turn
+        await asyncio.sleep(2)
+        firsts = []
+        for _ in range(runs):
+            start = time.perf_counter()
+            stream = tts.stream()
+            stream.push_text(text)
+            stream.end_input()
+            first = None
+            # Read to the end, as playback does, so the socket goes back to the pool.
+            async for _audio in stream:
+                first = first or time.perf_counter() - start
+            firsts.append(first)
+            await stream.aclose()
+            await asyncio.sleep(1)
+        await tts.aclose()
+    print(f"greeting: {text!r}")
+    print(f"  first audio from Aura  {summary(firsts)}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("part", choices=["llm", "db", "push"])
+    parser.add_argument("part", choices=["llm", "db", "push", "tts"])
     parser.add_argument("--runs", type=int, default=5)
     parser.add_argument(
         "--pause", type=float, default=8, help="seconds between LLM calls"
@@ -280,8 +309,10 @@ def main() -> None:
         asyncio.run(bench_llm(args.runs, args.pause, args.models, args.bare))
     elif args.part == "db":
         asyncio.run(bench_db(args.runs))
-    else:
+    elif args.part == "push":
         asyncio.run(bench_push(args.runs))
+    else:
+        asyncio.run(bench_tts(args.runs))
 
 
 if __name__ == "__main__":

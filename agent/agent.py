@@ -168,9 +168,13 @@ async def entrypoint(ctx: JobContext) -> None:
     # audio until the user clicks. It calls this RPC on click, so the greeting is heard.
     async def on_start(data: rtc.RpcInvocationData) -> str:
         state.timezone = parse_timezone(data.payload)
+        logger.info("start clicked", extra={"timezone": state.timezone})
         # "Today" and the calendar depend on the user's timezone.
-        await tools.refresh_instructions(agent, state)
-        session.generate_reply(instructions=prompt.GREETING)
+        tasks = await memory.list_tasks(state.db, state.user_id)
+        await tools.refresh_instructions(agent, state, tasks)
+        # Said, not generated: no LLM call, so the first word comes as fast as the
+        # voice can start, and it works even when every Groq model is rate-limited.
+        session.say(prompt.greeting(tasks))
         return "ok"
 
     await session.start(agent=agent, room=ctx.room)

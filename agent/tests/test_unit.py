@@ -296,6 +296,17 @@ def test_instructions_show_today_board_and_facts():
     assert "Saved facts: home_city = Riyadh" in text
 
 
+def test_greeting_suggests_a_first_task_on_an_empty_board():
+    assert "add a task to call mom tomorrow" in prompt.greeting([])
+
+
+def test_greeting_counts_open_tasks():
+    tasks = [{"done": False}, {"done": False}, {"done": True}]
+    assert "2 open tasks" in prompt.greeting(tasks)
+    assert "one open task" in prompt.greeting(tasks[1:])
+    assert "Everything on your board is done" in prompt.greeting(tasks[2:])
+
+
 def test_instructions_for_an_empty_board():
     text = prompt.build_instructions(FRIDAY, [], {})
     assert "(empty)" in text

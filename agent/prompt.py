@@ -30,10 +30,24 @@ For weather with no city given, use the home_city fact, or ask.
 # Why spell out "you hear them": the LLM only ever receives a transcript, so without
 # this it truthfully concludes it is reading text and says so (smoke test 2026-11-11).
 
-GREETING = (
-    "Greet the user in one short sentence. If the board is empty, suggest one example, "
-    "like: try, add a task to call mom tomorrow."
-)
+
+def greeting(tasks: list[dict]) -> str:
+    """What Lumi says when the user clicks Start, written here instead of generated.
+
+    Generating it cost an LLM call (~1.5K tokens of the 8K/min cap) before the first
+    word, and qwen and Gemini reject a request with no user message in it, so when
+    gpt-oss was rate-limited the user heard nothing (2026-11-12).
+    """
+    if not tasks:
+        return (
+            "Hi, I'm Lumi. Your board is empty. Try: add a task to call mom tomorrow."
+        )
+    open_count = sum(not t["done"] for t in tasks)
+    if open_count == 0:
+        return "Hi, it's Lumi. Everything on your board is done. What's next?"
+    if open_count == 1:
+        return "Hi, it's Lumi. You have one open task. What's next?"
+    return f"Hi, it's Lumi. You have {open_count} open tasks. What's next?"
 
 
 def build_instructions(today: date, tasks: list[dict], facts: dict[str, str]) -> str:
