@@ -124,6 +124,17 @@ async def entrypoint(ctx: JobContext) -> None:
                     "llm_model": (m.get("llm_metadata") or {}).get("model_name"),
                 },
             )
+        # The user's message carries the stages before the LLM: how long the final
+        # transcript took, and how long the turn detector waited before replying.
+        if item.type == "message" and item.role == "user" and item.metrics:
+            m = item.metrics
+            logger.info(
+                "user turn latency",
+                extra={
+                    "transcription_delay": m.get("transcription_delay"),
+                    "end_of_turn_delay": m.get("end_of_turn_delay"),
+                },
+            )
 
     @session.on("function_tools_executed")
     def log_tool_time(ev: FunctionToolsExecutedEvent) -> None:
