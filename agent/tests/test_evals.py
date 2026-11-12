@@ -63,6 +63,8 @@ async def test_still_answers_when_groq_fails(monkeypatch):
 
 # Smoke test 2026-11-11: asked "do you hear me?", Lumi said it could only use text.
 # Before the prompt fix, 2 of these 5 phrasings got "I can't hear you" / "I'm reading text".
+# Since the fixed replies (#32), the first two are answered from prompt.FIXED_REPLIES with no
+# model call; the same judge checks that answer, so the eval still covers both paths.
 @pytest.mark.parametrize(
     "question",
     [

@@ -66,10 +66,10 @@ npm run dev                               # http://localhost:3000
 
 | Command | What | Cost |
 |---|---|---|
-| `cd agent && uv run pytest` | Unit tests, no LLM. The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
+| `cd agent && uv run pytest` | Unit tests, no LLM (65). The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
 | `cd agent && uv run pytest -m "eval and core"` | The core conversation evals against the real LLM (17). Needs `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL`. | Groq quota. Runs on PRs that change `agent/`. |
 | `cd agent && uv run pytest -m eval` | The full eval suite (35) | ~100K Groq tokens, half the daily cap. On demand only: Actions → CI → Run workflow. |
-| `cd web && npm test` | Board helpers: payload parsing, date lanes, receipts, captions. Stats helpers: the password check, limit levels, percentiles. Calendar export: the Google link and the `.ics` file | Free. Runs on every push. |
+| `cd web && npm test` | 76 tests. Board helpers: payload parsing, date lanes, receipts, captions, read-along, the 14-day strip and month grid. Stats helpers: the password check, limit levels, percentiles, the cost model. Calendar export: the Google link and the `.ics` file. Turn timings and the session tally | Free. Runs on every push. |
 
 ## Deploy
 
@@ -98,6 +98,6 @@ One PR per related unit of change (for example "tasks SQL", "task tools and boar
 - **Base:** #1 plan → #10 LLM fallback → #6 CI
 - **Agent:** #7 → #9 → #11 → #12 → #13 → #14 → #16 → #17 → #18 → #19
 - **Web:** #2 → #3 → #4 → #5 → #15
-- **Polish, after M3** (one PR each, merged as they were done): #21 full notes, #22–#23 /stats, #24 memory shelf, #25 lantern icon, #26 cost model, #27 tool activity, #28 X-ray and receipt, #29 calendars and Connections, #30 read-along, #31 keys and suggestions, #32 fixed replies, #33 night strip and source chips, then the end-of-day line.
+- **Polish, after M3** (one PR each, merged as they were done): #21 full notes, #22–#23 /stats, #24 memory shelf, #25 lantern icon, #26 cost model, #27 tool activity, #28 X-ray, #29 calendars and Connections, #30 read-along, #31 keys and suggestions, #32 fixed replies, #33 night strip and source chips, #34 end of the day, #35 plain end-of-session card, #36 Connections tidy-up, #37 editable memory, #38 clickable calendar and month view.
 
 Everything runs on free tiers.

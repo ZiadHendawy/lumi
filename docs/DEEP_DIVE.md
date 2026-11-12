@@ -212,9 +212,9 @@ Ambiguity eval plus the priority-edit eval, 3 runs each:
 
 | Layer | Count | How it checks |
 |---|---|---|
-| Unit tests (`tests/test_unit.py`) | 45 | No LLM. SQL round trips, user isolation, the board payload contract, tool replies, query count per change, the search tool against a local fake Tavily, the fallback chain's order. The DB tests need `TEST_DATABASE_URL`. |
+| Unit tests (`tests/test_unit.py`) | 65 | No LLM. SQL round trips, user isolation, the board payload contract, tool replies, query count per change, the search tool against a local fake Tavily, the fallback chain's order. The DB tests need `TEST_DATABASE_URL`. |
 | Conversation evals (`tests/test_evals.py`) | 35, of which 17 are "core" | Text-only sessions against the real LLM, with a fresh user on the Neon test branch. They assert on **tool calls and their arguments** and on **the stored row** wherever possible. An LLM judge checks the reply, with a narrow intent. The judge uses the same fallback chain as Lumi. |
-| Web unit tests (`web/lib/board.test.ts`) | 19 | Payload parsing, date lanes, receipts, captions, back-to-back changes. |
+| Web unit tests (`web/lib/*.test.ts`) | 76 | Board helpers (43): payload parsing, date lanes, receipts, captions, back-to-back changes, read-along, the night strip and month grid. Calendar export (12), `/stats` helpers and the cost model (13), turn timings and the session tally (8). |
 
 **Lesson on judges:** a judge intent must be about meaning, not wording. A judge on a backup model failed a correct "couldn't reach the weather service for Jeddah tomorrow" because the intent said "right now". The intents now describe what must and must not be said.
 

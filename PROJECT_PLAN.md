@@ -128,7 +128,7 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 | **M3** | **Frontend & delight** | The lantern board: lantern talk button with live states, cards grouped by date, priority as glow, change animations, live captions, mobile layout | Distinct from a one-shot build. Smoke check passes on desktop + mobile. | 2–3 h | 2 |
 | **M4** | **Presentation** | README, `CODE_MAP.md`, write-up (API justification, deep-dive findings), **reader-facing doc tidy-up** (see below), demo video (also the backup demo), code walkthrough rehearsal, launch | Launched, with the repo public | 2–3 h | 2 / buffer |
 
-**Status (2026-11-12).** Every unit ships as its own PR, stacked and merged in order (see "How work ships" below).
+**Status (2026-11-13).** Every unit ships as its own PR, stacked and merged in order (see "How work ships" below).
 
 | # | Status | PRs |
 |---|---|---|
@@ -137,9 +137,10 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 | M1 | Done: tasks SQL, task tools and board push, facts, web search (replaced the weather tool of #12) | #7 → #9 → #11 → #12 → #19 |
 | M2 | Done: correctness (#13), sync logs (#14), reliability eval (#16), latency (#17), drop qwen and the sorry line (#18). Write-up in docs/DEEP_DIVE.md. | #13, #14, #16, #17, #18 |
 | M3 | Done: board helpers, board stream, lantern board, lantern button and captions, fixes from the live end-to-end run | #2 → #3 → #4 → #5 → #15 |
-| M4 | In progress: final docs (this PR), then the doc tidy-up below, demo video, launch | — |
+| Polish | Done, after M3, at the owner's request: full notes, /stats, memory shelf, icon, cost model, tool activity, X-ray, calendars, read-along, keys, fixed replies, night strip, end of day (2026-11-12); then plain end-of-session card, Connections tidy-up, editable memory, clickable calendar with a month view (2026-11-13). Shipped one PR each without CI runs to save quota, with the same checks run locally. | #21–#38 |
+| M4 | In progress: final docs, then the doc tidy-up below, demo video, launch | — |
 
-"Done" here means the code, tests and docs are written and the unit tests pass. Still left: merge the stack in order, deploy, and run the smoke check on the live URL. The live-audio run on 2026-11-12 was against a local agent (docs/SMOKE_TEST.md). CI evals were red on 2026-11-12 because the whole LLM chain was at its daily quota, not because of code.
+"Done" here means the code, tests and docs are written and the unit tests pass. Everything is merged and deployed. Still left: the full voice smoke check on the live URL and a phone (docs/SMOKE_TEST.md), and a full eval run once the quota allows; the polish PRs (#21–#38) shipped without CI evals. The live-audio run on 2026-11-12 was against a local agent (docs/SMOKE_TEST.md). CI evals were red on 2026-11-12 because the whole LLM chain was at its daily quota, not because of code.
 
 **M4 doc tidy-up (reader-facing).** The planning docs stay in the repo, because they show the plan came before the code. We don't add a second PRD next to them, since two plans drift apart. Instead:
 - Rewrite `README.md` as the front door: what Lumi is, the live URL, how it works, the deep dive, and a "How I planned this" link to the docs below.
@@ -166,7 +167,7 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 - **Cold start (10–20 s) on the free agent:** connect when the page loads and show a "waking up" state.
 - **Browser autoplay rules:** Lumi greets after the user clicks "Start".
 - **Network distance:** put the agent in a region near the providers, and measure it.
-- **Scope creep:** product choices are locked at the end of M0. No new features after M3.
+- **Scope creep:** product choices are locked at the end of M0. After M3 only polish the owner asked for, each one a small PR with its own tests and docs, and nothing that adds a service or a dependency.
 
 ## Open questions
 Answered on 2026-11-12 (reasons in the decision log above):
