@@ -222,6 +222,33 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+/* ---------- Today's lanterns are out ---------- */
+
+.all-out {
+  margin: -14px 0 28px;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 17px;
+  font-style: italic;
+  color: var(--paper-dim);
+}
+/* Just finished: one warm swell of light, like the last flame going out. */
+.all-out.is-new {
+  animation: all-out 3s ease-out;
+}
+@keyframes all-out {
+  0% {
+    opacity: 0;
+    color: #ffe2b0;
+    text-shadow: 0 0 30px rgba(255, 180, 80, 0.9);
+  }
+  30% {
+    opacity: 1;
+    color: #ffe2b0;
+    text-shadow: 0 0 30px rgba(255, 180, 80, 0.9);
+  }
+}
+
 /* ---------- Memory shelf: what Lumi remembers about you ---------- */
 
 .memory {

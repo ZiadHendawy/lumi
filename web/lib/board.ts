@@ -261,6 +261,14 @@ export function activityText(running: Activity[]): string | null {
   return latest ? (ACTIVITY_TEXT[latest.tool] ?? 'Working on it…') : null;
 }
 
+// --- Today's lanterns are out: every task due today is done, and nothing is overdue.
+
+export function todayAllDone(tasks: Task[], now: Date): boolean {
+  const dueToday = tasks.filter((t) => t.target_date && daysFromToday(t.target_date, now) === 0);
+  const overdue = tasks.some((t) => !t.done && groupOf(t, now) === 'overdue');
+  return dueToday.length > 0 && dueToday.every((t) => t.done) && !overdue;
+}
+
 // --- Read-along: the tasks Lumi is talking about, lit while it says them.
 
 // Lowercase words separated by single spaces, so "Call the bank," matches "call the bank".

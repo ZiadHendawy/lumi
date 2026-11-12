@@ -15,6 +15,7 @@ The look is "the lantern board": a dark board where a card's priority is how bri
 - **X-ray** (press X) shows the last reply's timing stages, the model that answered, how far the screen led the voice, and the prompt exactly as the model reads it.
 - **Session receipt:** when you end a session, one card sums it up: replies, median time to voice, changes and undos, screen lead.
 - **Connections:** download your dated tasks as `.ics` or add one to Google Calendar, with no sign-in. Planned integrations are listed honestly.
+- **End of the day:** when everything due today is done, "All of today's lanterns are out."
 - **Keys:** Space talks or mutes, Esc ends, X opens X-ray. Before you speak, the dock suggests phrases that fit your board.
 
 ## How it works
@@ -97,6 +98,6 @@ One PR per related unit of change (for example "tasks SQL", "task tools and boar
 - **Base:** #1 plan → #10 LLM fallback → #6 CI
 - **Agent:** #7 → #9 → #11 → #12 → #13 → #14 → #16 → #17 → #18 → #19
 - **Web:** #2 → #3 → #4 → #5 → #15
-- **Polish, after M3** (one PR each, merged as they were done): #21 full notes, #22–#23 /stats, #24 memory shelf, #25 lantern icon, #26 cost model, #27 tool activity, #28 X-ray and receipt, #29 calendars and Connections, #30 read-along, #31 keys and suggestions, #32 fixed replies, then the night strip and source chips.
+- **Polish, after M3** (one PR each, merged as they were done): #21 full notes, #22–#23 /stats, #24 memory shelf, #25 lantern icon, #26 cost model, #27 tool activity, #28 X-ray and receipt, #29 calendars and Connections, #30 read-along, #31 keys and suggestions, #32 fixed replies, #33 night strip and source chips, then the end-of-day line.
 
 Everything runs on free tiers.

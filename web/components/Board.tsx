@@ -16,6 +16,7 @@ import {
   nightLabel,
   nightStrip,
   splitLinks,
+  todayAllDone,
   withGhosts,
 } from '@/lib/board';
 import Connections, { CalendarLink } from './Connections';
@@ -123,6 +124,13 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
       <Memory facts={facts} changed={factsChanged} />
 
       {!isEmpty && <NightStrip tasks={tasks} recent={recent} now={now} />}
+
+      {/* A small reward for finishing the day. It glows once when a "done" put the last one out. */}
+      {todayAllDone(tasks, now) && (
+        <p className={change?.action === 'updated' && change.fields.includes('done') ? 'all-out is-new' : 'all-out'}>
+          All of today’s lanterns are out. Well done.
+        </p>
+      )}
 
       {isEmpty ? (
         <div className="empty">

@@ -20,6 +20,7 @@ import {
   groupTasks,
   parseBoard,
   suggestions,
+  todayAllDone,
   splitLastWord,
   spokenTaskIds,
   userCaption,
@@ -297,6 +298,17 @@ test('suggestions come from the board, at most three', () => {
     'My favorite color is blue',
   ]);
   assert.deepEqual(suggestions([task(5, { done: true })], { a: 'b' }, NOW).length, 2); // all done: start fresh
+});
+
+test('todayAllDone needs a task due today, all of them done, and nothing overdue', () => {
+  const today = '2026-11-12';
+  assert.equal(todayAllDone([], NOW), false);
+  assert.equal(todayAllDone([task(1, { target_date: today, done: true })], NOW), true);
+  assert.equal(todayAllDone([task(1, { target_date: today, done: true }), task(2, { target_date: today })], NOW), false);
+  const late = task(3, { target_date: '2026-11-11' });
+  assert.equal(todayAllDone([task(1, { target_date: today, done: true }), late], NOW), false);
+  // Undated and later tasks don't count against today.
+  assert.equal(todayAllDone([task(1, { target_date: today, done: true }), task(4), task(5, { target_date: '2026-11-20' })], NOW), true);
 });
 
 test('changedFacts lists new and changed facts, not the unchanged ones', () => {
