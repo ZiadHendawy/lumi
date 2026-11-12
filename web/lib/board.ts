@@ -329,3 +329,102 @@ export function userCaption(messages: TranscriptMessage[]): { id: string; text: 
     .join(' ');
   return { id: segments[0].id, text };
 }
+
+// --- Night strip: the same 14-day calendar the model reads (agent/prompt.py `build_instructions`,
+// `config.CALENDAR_DAYS`), drawn above the lanes with one dot per open task due that day.
+
+export type Night = {
+  date: string; // 'YYYY-MM-DD', the local calendar day
+  weekday: string; // 'Fri'
+  day: number; // 14
+  isToday: boolean;
+  isWeekend: boolean;
+  tasks: Task[]; // open tasks due that day, brightest first (the lane order)
+};
+
+const weekdayFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short' });
+
+// Built from the local parts, not toISOString(), which would give the UTC day.
+function isoDay(day: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+}
+
+// Today and the next days - 1. The prompt names today and then lists the 14 days after it;
+// the strip starts at today instead, because today's tasks are the ones the user looks for first.
+export function nightStrip(tasks: Task[], now: Date, days = 14): { nights: Night[]; overdue: number } {
+  const dated = tasks.filter((t) => !t.done && t.target_date).sort(compareTasks);
+  const nights = Array.from({ length: days }, (_, n) => {
+    // The Date constructor rolls day 32 into the next month (and year), in local time.
+    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
+    const weekdayNumber = day.getDay();
+    return {
+      date: isoDay(day),
+      weekday: weekdayFormat.format(day),
+      day: day.getDate(),
+      isToday: n === 0,
+      // Saturday and Sunday. (Saudi Arabia rests Friday and Saturday; the browser's own weekend
+      // needs Intl.Locale's getWeekInfo, which not every browser has, so it isn't guessed.)
+      isWeekend: weekdayNumber === 0 || weekdayNumber === 6,
+      tasks: dated.filter((t) => daysFromToday(t.target_date!, now) === n),
+    };
+  });
+  const overdue = dated.filter((t) => daysFromToday(t.target_date!, now) < 0).length;
+  return { nights, overdue };
+}
+
+// What a night's tooltip and screen reader say: "Fri 14 Nov: Call the bank (high), Buy milk (low)".
+export function nightLabel(night: Night): string {
+  const due = night.tasks.map((t) => `${t.title} (${t.priority})`).join(', ');
+  return `${friendlyDate(night.date)}: ${due || 'nothing due'}`;
+}
+
+// A dot lights up when its task just landed on that night: it was added, or its date moved.
+export function dotIgnites(recent: RecentChange | undefined): boolean {
+  if (!recent) return false;
+  const { action, fields } = recent.change;
+  return action === 'created' || (action === 'updated' && fields.includes('target_date'));
+}
+
+// --- Source chips: links in a card's notes (look_up appends " Sources: <url> <url>").
+
+export type NoteSegment = { text: string } | { url: string; site: string };
+
+// "https://www.ikea.com/sa/en/" -> "ikea.com", like the agent's tools.site_name. Null if it
+// doesn't parse as a URL, so it stays plain text.
+function siteName(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+// A URL in prose usually ends at a space, but the sentence's own punctuation sticks to it:
+// "see https://a.com." or "(https://a.com)". Those characters are left as text. A closing
+// bracket is kept when the URL opened one, as in Wikipedia's ".../Mercury_(planet)".
+function trimUrlEnd(url: string): string {
+  const unbalanced = (u: string) => u.split(')').length > u.split('(').length;
+  while (/[.,;:!?'"]$/.test(url) || (url.endsWith(')') && unbalanced(url))) {
+    url = url.slice(0, -1);
+  }
+  return url;
+}
+
+// The notes split into text and links. Only http(s) URLs are matched, so a `javascript:` link
+// can't be made, and the caller renders each piece as a React text node or an <a href>, never
+// as HTML, because notes hold text from the web.
+export function splitLinks(text: string): NoteSegment[] {
+  const segments: NoteSegment[] = [];
+  let end = 0; // where the text not yet in `segments` starts
+  for (const match of text.matchAll(/https?:\/\/\S+/gi)) {
+    const url = trimUrlEnd(match[0]);
+    const site = siteName(url);
+    if (!site) continue; // doesn't parse as a URL: it stays part of the surrounding text
+    if (match.index > end) segments.push({ text: text.slice(end, match.index) });
+    segments.push({ url, site });
+    end = match.index + url.length;
+  }
+  if (end < text.length) segments.push({ text: text.slice(end) });
+  return segments;
+}

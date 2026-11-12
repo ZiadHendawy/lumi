@@ -9,9 +9,13 @@ import {
   type Task,
   GROUP_LABELS,
   cardChange,
+  dotIgnites,
   factLabel,
   friendlyDate,
   groupTasks,
+  nightLabel,
+  nightStrip,
+  splitLinks,
   withGhosts,
 } from '@/lib/board';
 import Connections, { CalendarLink } from './Connections';
@@ -92,7 +96,7 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
           )}
         </div>
         <h3 className="card-title">{task.title}</h3>
-        {task.body && <p className="card-body">{task.body}</p>}
+        {task.body && <p className="card-body"><Notes text={task.body} /></p>}
         {/* CSS shows this only after a moment, so a fast tool doesn't flash it. */}
         {busy && <p className="card-working">{ACTIVITY_TEXT[busy.tool] ?? 'Working on it…'}</p>}
       </article>
@@ -117,6 +121,8 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
       </div>
 
       <Memory facts={facts} changed={factsChanged} />
+
+      {!isEmpty && <NightStrip tasks={tasks} recent={recent} now={now} />}
 
       {isEmpty ? (
         <div className="empty">
@@ -205,5 +211,61 @@ function Memory({ facts, changed }: { facts: Facts; changed: Props['factsChanged
         </ul>
       )}
     </section>
+  );
+}
+
+// The night strip: the same 14-day calendar the model reads in its prompt (prompt.build_instructions),
+// drawn so the user can see the days Lumi resolves "next Friday" against. One dot per open task,
+// as bright as its priority.
+function NightStrip({ tasks, recent, now }: { tasks: Task[]; recent: RecentChange[]; now: Date }) {
+  const { nights, overdue } = nightStrip(tasks, now);
+  return (
+    <section className="nights" aria-label="The next 14 days">
+      {overdue > 0 && <p className="nights-overdue">{overdue} overdue</p>}
+      {/* Only this row scrolls sideways on a phone, never the page. */}
+      <ol className="nights-row">
+        {nights.map((night) => {
+          const label = nightLabel(night);
+          const classes = ['night'];
+          if (night.isToday) classes.push('is-today');
+          if (night.isWeekend) classes.push('is-weekend');
+          return (
+            <li key={night.date} className={classes.join(' ')} title={label}>
+              <span className="night-weekday" aria-hidden="true">{night.weekday}</span>
+              <span className="night-day" aria-hidden="true">{night.day}</span>
+              <span className="night-dots" aria-hidden="true">
+                {night.tasks.map((task) => {
+                  const changed = cardChange(recent, task.id);
+                  const ignites = dotIgnites(changed);
+                  return (
+                    <span
+                      // A fresh key restarts the ignite animation, like a changed card.
+                      key={ignites ? `${task.id}-${changed!.seq}` : task.id}
+                      className={`night-dot prio-${task.priority}${ignites ? ' is-igniting' : ''}`}
+                    />
+                  );
+                })}
+              </span>
+              <span className="sr-only">{label}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </section>
+  );
+}
+
+// A card's notes with each web link shown as a small chip naming the site. Every piece is a
+// text node or an <a>, never HTML, because search answers come from the web. The "Sources:"
+// label the agent writes is kept: it says what the chips are, and the notes stay as stored.
+function Notes({ text }: { text: string }) {
+  return splitLinks(text).map((piece, i) =>
+    'url' in piece ? (
+      <a key={i} className="source-chip" href={piece.url} title={piece.url} target="_blank" rel="noopener noreferrer">
+        {piece.site}
+      </a>
+    ) : (
+      piece.text
+    ),
   );
 }

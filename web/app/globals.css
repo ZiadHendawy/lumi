@@ -1450,7 +1450,10 @@ button {
   .caption-lumi {
     font-size: 17px;
   }
+  /* On a phone the button sits in the masthead and scrolls away with it, so it never
+     covers a card's date chip; the panel it opens is still fixed. */
   .xray-toggle {
+    position: absolute;
     top: 14px;
     right: 14px;
   }
@@ -1734,4 +1737,170 @@ button {
   margin: 0;
   font-size: 14px;
   color: var(--paper-dim);
+}
+
+/* ---------- Night strip and source chips ----------
+   The strip is the 14-day calendar the model reads, one cell per night, with a dot per open
+   task lit like its card. Source chips are the web-search links in a card's notes. */
+
+.nights {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: -14px 0 32px;
+}
+
+.nights-overdue {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 116, 66, 0.3);
+  font-size: 12px;
+  color: #ffb79b;
+  white-space: nowrap;
+}
+
+/* Cells share the width on a wide screen; on a phone they keep a readable width and this
+   row, not the page, scrolls sideways. */
+.nights-row {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(42px, 1fr);
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none; /* the cut-off cell at the edge already says "scroll" */
+}
+
+.night {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 0 8px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  scroll-snap-align: start;
+}
+.night.is-today {
+  border-color: var(--line);
+  background: var(--glass);
+}
+.night.is-weekend {
+  opacity: 0.6;
+}
+
+.night-weekday {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.night-day {
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 16px;
+  line-height: 1.3;
+  color: var(--paper-dim);
+  font-variant-numeric: tabular-nums;
+}
+.night.is-today .night-weekday,
+.night.is-today .night-day {
+  color: var(--amber);
+}
+
+/* Up to four dots a line; a busy night wraps. The min-height keeps empty nights aligned. */
+.night-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+  max-width: 30px;
+  min-height: 6px;
+  margin-top: 3px;
+}
+.night-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+/* As bright as the card: high glows, medium is warm, low is a faint cool ring (like its flame). */
+.night-dot.prio-high {
+  background: var(--amber);
+  box-shadow: 0 0 6px 1px var(--amber-soft), 0 0 12px 2px rgba(255, 116, 66, 0.35);
+}
+.night-dot.prio-medium {
+  background: var(--amber-soft);
+  box-shadow: 0 0 5px var(--amber-soft);
+}
+.night-dot.prio-low {
+  border: 1px solid var(--cool);
+  opacity: 0.6;
+}
+
+/* The task just landed on this night (added, or its date moved): the dot flares, then settles. */
+.night-dot.is-igniting {
+  animation: dot-ignite 1.6s ease-out;
+}
+@keyframes dot-ignite {
+  0% {
+    transform: scale(2.4);
+    filter: brightness(2);
+    box-shadow: 0 0 14px 4px var(--amber), 0 0 24px 6px var(--ember);
+  }
+}
+
+/* A link from a web search, shown as the site's name. Inline, so it sits in the notes' text. */
+.source-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 238, 214, 0.05);
+  font-size: 12px;
+  line-height: 1.5; /* 18 px + borders: no taller than a line of notes, so lines don't jump */
+  color: var(--paper-dim);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  /* With overflow hidden, an inline-block's baseline is its bottom edge, so it would float
+     above the words around it; aligning bottoms puts the site name on their line. */
+  vertical-align: bottom;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.source-chip:hover {
+  border-color: var(--amber-soft);
+  color: var(--amber);
+}
+
+@media (max-width: 640px) {
+  .nights {
+    margin: -10px 0 24px;
+  }
+  /* The row scrolls here, so its right edge fades out to say there is more. */
+  .nights-row {
+    mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Still lights up, without the jump in size. */
+  @keyframes dot-ignite {
+    0% {
+      filter: brightness(2);
+      box-shadow: 0 0 14px 4px var(--amber);
+    }
+  }
 }

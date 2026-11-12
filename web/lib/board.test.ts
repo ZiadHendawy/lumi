@@ -24,6 +24,10 @@ import {
   spokenTaskIds,
   userCaption,
   withGhosts,
+  dotIgnites,
+  nightLabel,
+  nightStrip,
+  splitLinks,
 } from './board.ts';
 
 // A fixed "now": Thursday 12 November 2026, mid-afternoon local time.
@@ -334,4 +338,122 @@ test('applyActivity tracks parallel tools until each one ends', () => {
   running = applyActivity(running, { status: 'ended', call_id: 'a' });
   assert.equal(activityText(running), null);
   assert.equal(activityText([{ call_id: 'x', tool: 'new_tool', task_id: null }]), 'Working on it…');
+});
+
+test('nightStrip draws today and the next 13 days, with weekends marked', () => {
+  const { nights, overdue } = nightStrip([], NOW);
+  assert.equal(nights.length, 14);
+  assert.equal(overdue, 0);
+  assert.deepEqual(nights[0], {
+    date: '2026-11-12',
+    weekday: 'Thu',
+    day: 12,
+    isToday: true,
+    isWeekend: false,
+    tasks: [],
+  });
+  assert.equal(nights[13].date, '2026-11-25');
+  assert.equal(nights.filter((n) => n.isToday).length, 1);
+  assert.deepEqual(
+    nights.filter((n) => n.isWeekend).map((n) => `${n.weekday} ${n.day}`),
+    ['Sat 14', 'Sun 15', 'Sat 21', 'Sun 22'],
+  );
+});
+
+test('nightStrip rolls over a month end and a year end in local days', () => {
+  const nights = nightStrip([], new Date(2026, 11, 25, 23, 59)).nights;
+  assert.deepEqual(
+    nights.slice(5, 9).map((n) => n.date),
+    ['2026-12-30', '2026-12-31', '2027-01-01', '2027-01-02'],
+  );
+  assert.equal(nights[7].day, 1);
+});
+
+test('nightStrip puts each open task on its night, brightest first, and counts the overdue ones', () => {
+  const { nights, overdue } = nightStrip(
+    [
+      task(1, { priority: 'low', target_date: '2026-11-14' }),
+      task(2, { priority: 'high', target_date: '2026-11-14' }),
+      task(3, { priority: 'high', target_date: '2026-11-14', done: true }), // done: no dot
+      task(4, { target_date: '2026-11-12' }),
+      task(5, { target_date: '2026-11-26' }), // 14 days away: past the strip
+      task(6, { target_date: null }),
+      task(7, { target_date: '2026-11-10' }),
+      task(8, { target_date: '2026-11-11' }),
+      task(9, { target_date: '2026-11-01', done: true }), // done and late: not overdue
+    ],
+    NOW,
+  );
+  assert.deepEqual(
+    nights.map((n) => n.tasks.map((t) => t.id)),
+    [[4], [], [2, 1], [], [], [], [], [], [], [], [], [], [], []],
+  );
+  assert.equal(overdue, 2);
+});
+
+test('nightLabel lists the tasks on a night, or says nothing is due', () => {
+  const { nights } = nightStrip(
+    [
+      task(1, { title: 'Buy milk', priority: 'low', target_date: '2026-11-13' }),
+      task(2, { title: 'Call the bank', priority: 'high', target_date: '2026-11-13' }),
+    ],
+    NOW,
+  );
+  assert.equal(nightLabel(nights[1]), 'Fri 13 Nov: Call the bank (high), Buy milk (low)');
+  assert.equal(nightLabel(nights[2]), 'Sat 14 Nov: nothing due');
+});
+
+test('dotIgnites for a new task or a moved date, not for other edits', () => {
+  const recent = (change: Change) => addChange([], 1, change, [], [task(1)])[0];
+  assert.equal(dotIgnites(undefined), false);
+  assert.equal(dotIgnites(recent(changeOf('created', 1, 'Task 1'))), true);
+  assert.equal(dotIgnites(recent(changeOf('updated', 1, 'Task 1', ['target_date', 'priority']))), true);
+  assert.equal(dotIgnites(recent(changeOf('updated', 1, 'Task 1', ['priority']))), false);
+  assert.equal(dotIgnites(recent(changeOf('deleted', 1, 'Task 1'))), false);
+});
+
+test('splitLinks leaves plain text as one piece', () => {
+  assert.deepEqual(splitLinks('Bring two photos.\nAnd the old passport.'), [
+    { text: 'Bring two photos.\nAnd the old passport.' },
+  ]);
+  assert.deepEqual(splitLinks(''), []);
+});
+
+test('splitLinks turns one URL into a site chip and keeps the text around it', () => {
+  assert.deepEqual(splitLinks('Open until 10 pm. Sources: https://www.ikea.com/sa/en/stores/'), [
+    { text: 'Open until 10 pm. Sources: ' },
+    { url: 'https://www.ikea.com/sa/en/stores/', site: 'ikea.com' },
+  ]);
+});
+
+test('splitLinks splits two sources, as look_up saves them', () => {
+  assert.deepEqual(splitLinks('Sources: https://www.gov.sa/en/passports http://travel.state.gov/x?a=1&b=2'), [
+    { text: 'Sources: ' },
+    { url: 'https://www.gov.sa/en/passports', site: 'gov.sa' },
+    { text: ' ' },
+    { url: 'http://travel.state.gov/x?a=1&b=2', site: 'travel.state.gov' },
+  ]);
+});
+
+test('splitLinks leaves the punctuation after a URL as text', () => {
+  assert.deepEqual(splitLinks('See https://a.com/page. Then (https://b.org/x), done'), [
+    { text: 'See ' },
+    { url: 'https://a.com/page', site: 'a.com' },
+    { text: '. Then (' },
+    { url: 'https://b.org/x', site: 'b.org' },
+    { text: '), done' },
+  ]);
+  // A bracket the URL itself opened is part of it.
+  assert.deepEqual(splitLinks('https://en.wikipedia.org/wiki/Mercury_(planet).'), [
+    { url: 'https://en.wikipedia.org/wiki/Mercury_(planet)', site: 'en.wikipedia.org' },
+    { text: '.' },
+  ]);
+});
+
+test('splitLinks links only http and https: other schemes stay text', () => {
+  for (const text of ['javascript:alert(1)', 'ftp://files.example.com/a', 'data:text/html,<b>hi</b>', 'mailto:a@b.com']) {
+    assert.deepEqual(splitLinks(text), [{ text }]);
+  }
+  // A URL that doesn't parse stays text too.
+  assert.deepEqual(splitLinks('https://[broken'), [{ text: 'https://[broken' }]);
 });
