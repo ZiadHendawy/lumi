@@ -12,7 +12,7 @@ Figures come mostly from third-party pricing write-ups and need a final check in
 | LiveKit Cloud (Build) | Realtime audio + agent hosting | ✅ Free | About 1,000 agent-session min/month (third-party figure), 5 concurrent sessions, 1 hosted agent | **The free agent scales to zero, so the first connection after idle has a 10–20 s cold start.** Stops at the limit, no surprise bill. |
 | Deepgram | STT (and TTS, see below) | ✅ Free credit | $200 credit, no card needed | One-time credit, not a monthly plan. More than enough for this project. |
 | Cartesia | TTS (alternative) | ⚠️ Too small | About 20k credits/month ≈ 20–25 min of audio, non-commercial | Development and demos would use it up. **No longer the default.** |
-| Groq | LLM | ✅ Free | **Measured on our key (2026-11-11): 1,000 requests/day and 8,000 tokens/min per model.** Chat models offered: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` (`llama-3.3-70b` is gone). | **8K tokens/min is about 3–5 voice turns a minute** before we fall back to Gemini. Keep prompts short. |
+| Groq | LLM | ✅ Free | **Measured on our key (2026-11-11): 1,000 requests/day and 8,000 tokens/min per model.** Chat models offered: `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b` (`llama-3.3-70b` is gone). | **8K tokens/min is about 3–5 voice turns a minute** before we fall back to Gemini. Keep prompts short. A task turn costs two LLM calls (tool call + reply). |
 | Cerebras | LLM fallback (previous pick) | ❌ Card required | Free tier needs a credit card to get an API key | **Dropped.** |
 | Gemini (Google AI Studio) | LLM fallback / vision | ✅ Free, no card | **Flash-Lite:** ~10–15 req/min, ~500 req/day. Flash: ~5 req/min, ~20 req/day (third-party figures, Oct 2026) | Too small as the main LLM, enough as a fallback. Use Flash-Lite, not Flash. |
 | Neon | Postgres (memory) | ✅ Free | 1 GB storage, 100 compute-hours/project | Scales to zero after 5 min and **wakes automatically** (adds ~0.5 s to the first query) |
@@ -24,11 +24,11 @@ Figures come mostly from third-party pricing write-ups and need a final check in
 
 **What changed because of this check:**
 - **Hosting fallback:** Fly.io is dropped. LiveKit Cloud is the only free host. To hide its cold start, the frontend starts the agent when the page loads, not when the user presses "talk". See §9.
-- **TTS:** Deepgram Aura is now the default, paid for by the same $200 credit. Cartesia and ElevenLabs are used only with paid keys.
+- **TTS:** Deepgram Aura is now the default, paid for by the same $200 credit. Cartesia and ElevenLabs are not used: their free tiers are too small, and we decided to stay on free tiers.
 - **Database:** Neon replaces Supabase, because Neon wakes up on its own and Supabase needs a manual restore after a week idle.
 - **LLM fallback:** Gemini Flash-Lite. Cerebras was dropped because it needs a card. Other no-card options checked on 2026-11-11: SambaNova (~20 req/day), OpenRouter free models (50/day) and GitHub Models (50–150/day, possibly retired) are too small. Mistral's free plan is large but may train on prompts unless you opt out, and our prompts contain users' saved facts.
 - **Groq limits (measured):** our key allows 8K tokens/min and 1,000 requests/day per model. The per-minute cap is the one a voice session will hit. Main model: `gpt-oss-120b` with `reasoning_effort="low"`. It made correct tool calls in testing (~0.85 s). `qwen3.8-27b` was ~0.2 s faster with equally correct tool calls, so it's the first thing to try in a latency deep dive. `gpt-oss-20b` spent its whole token budget reasoning on a trivial prompt.
-- **Paid keys** for Groq, Gemini and Cartesia/ElevenLabs would remove the rate-limit and quota risks, but the budget is $0.
+- **Free tiers only (decided 2026-11-12).** Everything runs on our own free tiers, so the demo doesn't depend on someone else's account. Rate-limit risk is handled with short prompts and automatic fallbacks instead.
 
 ---
 
@@ -84,7 +84,7 @@ Figures come mostly from third-party pricing write-ups and need a final check in
 | ElevenLabs (Flash/Turbo) | The most expressive voices. Voice cloning (good for a "personal" touch). | Pricier. Small free quota. Its low-latency models give up some quality. |
 | OpenAI TTS | Simple API. Decent quality. | Higher latency. Paid. Not on the free-tier shortlist. |
 
-**Pick: Deepgram Aura** to stay at $0. With a paid key, Cartesia (latency) or ElevenLabs (voice delight) is one config change.
+**Pick: Deepgram Aura** to stay at $0. Switching to Cartesia (latency) or ElevenLabs (expressiveness) would be a one-line change in `config.py` if a paid key were ever available.
 
 ---
 
@@ -109,7 +109,7 @@ Figures come mostly from third-party pricing write-ups and need a final check in
 | FastAPI (Python, next to the agent) | One language for agent, memory and tools. Async. Generates OpenAPI docs. | One more service to build and deploy, and nothing needs it yet. The agent reads and writes memory in Neon directly. |
 | Node / Express | One language with the frontend | Extra service. The agent is Python anyway. |
 
-**Pick: the Next.js API route.** Add FastAPI only if a real backend is needed later (e.g. a memory dashboard).
+**Pick: the Next.js API route.** The task dashboard still doesn't need a backend. The agent already holds the user's DB connection, so it pushes the board to the browser over LiveKit (§14) instead of the browser fetching it from an API.
 
 ---
 
@@ -135,7 +135,7 @@ Figures come mostly from third-party pricing write-ups and need a final check in
 | Auth.js (magic link / OAuth, data in Neon) | Memory follows the user across devices. Free. No extra vendor. | Adds a login step for new users |
 | Clerk / Auth0 | Polished UI. Free tiers. | Extra vendor. Overkill here. |
 
-**Pick: anonymous first**, with optional Auth.js later (open question #4 in the plan).
+**Pick: anonymous** (decided 2026-11-12). A new user opens the URL and talks, with no sign-up. Auth.js would be the next step if the board had to follow a user across devices.
 
 ---
 
@@ -201,3 +201,27 @@ The worker is a long-running Python process, so serverless platforms are out.
 | End-to-end voice tests (simulated audio, e.g. Playwright + audio injection) | Tests the real voice path | Slow, brittle and hard to build in 2 days |
 
 **Pick: pytest for everything** (unit tests on every push, agent evals on PR), plus a 5-minute manual voice smoke checklist per milestone. To keep evals stable, assert on tool calls rather than exact wording, and use temperature 0.
+
+---
+
+## 13. External API
+
+| Option | Pros | Cons |
+|---|---|---|
+| ✅ **Open-Meteo (forecast + geocoding)** | Free, **no key and no account**, so nothing can expire before someone opens the demo. 16-day daily forecast, global. Two plain GET requests. | Forecast only goes about 16 days out |
+| Google Calendar | Very on-theme for a task board | OAuth consent screen for every user, verification, and token storage: a lot of code to explain for a small project |
+| Nager.Date (public holidays) | Free, no key. Could warn when a target date falls on a holiday. | Coverage of Gulf countries is uncertain. Fewer daily-use questions. |
+| OpenWeatherMap | Popular | Needs a key and signup. Free tier has rate limits. |
+
+**Pick: Open-Meteo.** Tasks have target dates, and many real tasks depend on the weather (errands, travel, anything outdoors). So "will it rain on Saturday?" is a question you naturally ask while planning the week with Lumi. The `home_city` fact means Lumi only asks for your city once. Called with `aiohttp`, which `livekit-agents` already installs, with a short timeout. Any failure is reported as a tool error, so Lumi says it couldn't check and never invents a forecast.
+
+## 14. Agent → browser board sync
+
+| Option | Pros | Cons |
+|---|---|---|
+| ✅ **LiveKit text stream (`send_text`, topic `lumi.board`), the whole board as JSON** | Reuses the WebRTC connection we already have. No new service, no DB access from Vercel, one code path for SQL. No size cap. React side is one `registerTextStreamHandler`. | The board only updates while a session is connected (fine: changes only happen by voice, inside a session) |
+| Next.js `/api/tasks` route reading Neon | Board loads without the agent | The same SQL twice in two languages, a new DB driver dependency, and the browser polling or refreshing after each change |
+| LiveKit RPC agent → browser | Request/response, with acknowledgement | 15 KB payload cap. We don't need an answer back. |
+| Participant attributes | Automatically synced state | Small size limits. Meant for small key/value data, not lists. |
+
+**Pick: text stream, whole board each time.** The browser replaces its state with what arrives, so it can never drift from the database. A tiny `change` field tells it which card and which fields to animate. The browser also caches the last board in `localStorage` to cover the agent's cold start.
