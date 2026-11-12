@@ -29,10 +29,11 @@ def test_llm_prefers_groq_then_falls_back(monkeypatch):
     monkeypatch.setenv("GEMINI_API_KEY", "test")
     model = config.build_llm()
     assert isinstance(model, llm.FallbackAdapter)
-    # 2026-11-12: two more Groq models sit between Groq and Gemini (per-model caps).
-    assert len(model._llm_instances) == 4
-    assert all(isinstance(m, groq.LLM) for m in model._llm_instances[:3])
-    assert [m.model for m in model._llm_instances[1:3]] == config.GROQ_BACKUP_MODELS
+    # 2026-11-12: backup Groq models sit between Groq and Gemini (per-model caps);
+    # qwen was dropped the same day for confirming tool arguments it never sent.
+    assert all(isinstance(m, groq.LLM) for m in model._llm_instances[:-1])
+    assert [m.model for m in model._llm_instances[1:-1]] == config.GROQ_BACKUP_MODELS
+    assert "qwen/qwen3.8-27b" not in [m.model for m in model._llm_instances[:-1]]
     assert model._attempt_timeout == 10
     fallback = model._llm_instances[-1]
     assert fallback.model == config.GEMINI_MODEL

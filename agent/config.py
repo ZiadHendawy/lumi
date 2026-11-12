@@ -31,13 +31,14 @@ FORECAST_DAYS_AHEAD = 15
 WEATHER_TIMEOUT_SECONDS = 3
 
 # Checked 2026-11-11: llama-3.3-70b is no longer offered. gpt-oss-120b made correct tool
-# calls in testing; qwen/qwen3.8-27b was ~0.2 s faster and is the first thing to try for latency.
+# calls in testing.
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
-# Groq's free caps (8K tokens/min, 200K tokens/day) are per model, so each extra Groq
-# model adds a full day of capacity before we reach Gemini. Order is by correctness on
-# our hardest evals (ambiguous reference + priority edit, 3 runs each, 2026-11-12):
-# gpt-oss-20b passed 6/6 at ~0.3 s, qwen 2/6, so qwen only serves once both are capped.
-GROQ_BACKUP_MODELS = ["openai/gpt-oss-20b", "qwen/qwen3.8-27b"]
+# Groq's free caps (8K tokens/min, 200K tokens/day) are per model, so a backup Groq
+# model adds a full day of capacity before we reach Gemini. gpt-oss-20b passed our
+# hardest evals 6/6 at ~0.3 s (2026-11-12). qwen3.8-27b was dropped despite the extra
+# capacity: it sent create_task with priority and date null in 6/6 runs, then told the
+# user they were set. A wrong change confirmed out loud is worse than a slow answer.
+GROQ_BACKUP_MODELS = ["openai/gpt-oss-20b"]
 # Flash-Lite, not Flash: on the free tier Flash allows ~20 requests/day, Flash-Lite ~500.
 # The "-latest" alias follows Google's current Flash-Lite, so a model retirement can't break us.
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
@@ -58,10 +59,10 @@ def build_llm() -> llm.LLM:
             # gpt-oss "thinks" before answering; low effort keeps that to a few tokens,
             # which matters for latency and the 8K tokens/min free-tier cap.
             groq.LLM(model=GROQ_MODEL, temperature=0, reasoning_effort="low"),
-            groq.LLM(
-                model=GROQ_BACKUP_MODELS[0], temperature=0, reasoning_effort="low"
-            ),
-            groq.LLM(model=GROQ_BACKUP_MODELS[1], temperature=0),
+            *[
+                groq.LLM(model=m, temperature=0, reasoning_effort="low")
+                for m in GROQ_BACKUP_MODELS
+            ],
             openai.LLM(
                 model=GEMINI_MODEL,
                 base_url=GEMINI_BASE_URL,
