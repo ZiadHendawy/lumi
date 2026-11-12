@@ -457,7 +457,10 @@ button {
   }
 }
 
-/* A band of light sweeps across the card that changed. */
+/* A band of light sweeps across the card that changed. The layer stays put and the
+   light moves inside it (a 3x-wide gradient slid via background-position): moving the
+   layer itself showed the band outside the card, and clipping the card would also
+   clip its priority glow. */
 .card.is-updated::after,
 .card.is-created::after,
 .card.is-restored::after {
@@ -466,19 +469,17 @@ button {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: linear-gradient(105deg, transparent 30%, rgba(255, 226, 170, 0.22) 50%, transparent 70%);
-  transform: translateX(-100%);
-  opacity: 0;
-  animation: sweep 1.3s 0.15s ease-out;
+  background: linear-gradient(105deg, transparent 40%, rgba(255, 226, 170, 0.22) 50%, transparent 60%);
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  animation: sweep 1.3s 0.15s ease-out both;
 }
 @keyframes sweep {
-  0% {
-    transform: translateX(-100%);
-    opacity: 1;
+  from {
+    background-position: 100% 0;
   }
-  100% {
-    transform: translateX(100%);
-    opacity: 1;
+  to {
+    background-position: 0% 0;
   }
 }
 
@@ -679,17 +680,25 @@ button {
   }
 }
 
-/* ---------- Receipt toast: one line saying what just changed ---------- */
+/* ---------- Receipt toasts: one line per change, stacked at the top ---------- */
 
-.toast {
+.toasts {
   position: fixed;
   top: 18px;
   left: 0;
   right: 0;
   z-index: 20;
-  width: fit-content;
-  max-width: calc(100% - 32px);
-  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  pointer-events: none;
+}
+
+.toast {
+  max-width: 100%;
+  margin: 0;
   display: flex;
   align-items: center;
   gap: 10px;

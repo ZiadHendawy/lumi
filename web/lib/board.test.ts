@@ -2,7 +2,20 @@
 // Node 24 runs TypeScript directly by stripping the types, so no test dependency is needed).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { type Task, daysFromToday, describeChange, friendlyDate, groupOf, groupTasks, parseBoard } from './board.ts';
+import {
+  type Change,
+  type Task,
+  addChange,
+  cardChange,
+  daysFromToday,
+  describeChange,
+  friendlyDate,
+  groupOf,
+  groupTasks,
+  parseBoard,
+  userCaption,
+  withGhosts,
+} from './board.ts';
 
 // A fixed "now": Thursday 12 November 2026, mid-afternoon local time.
 const NOW = new Date(2026, 10, 12, 15, 30);
@@ -125,4 +138,106 @@ test('describeChange says what happened in plain words', () => {
   );
   assert.equal(describeChange(change('updated', ['done']), task(1, { done: true })), 'Marked “Call mom” done');
   assert.equal(describeChange(change('updated', ['done']), task(1, { done: false })), 'Reopened “Call mom”');
+});
+
+// Shaped like the messages useSessionMessages returns.
+const said = (id: string, message: string) => ({ id, type: 'userTranscript', message });
+const replied = (id: string, message: string) => ({ id, type: 'agentTranscript', message });
+
+test('userCaption joins a turn that the speech-to-text split into several segments', () => {
+  // Seen in an end-to-end run: only "High priority." was shown.
+  const messages = [said('u1', 'Add a task to call the bank tomorrow.'), said('u2', 'High priority.')];
+  assert.deepEqual(userCaption(messages), {
+    id: 'u1',
+    text: 'Add a task to call the bank tomorrow. High priority.',
+  });
+});
+
+test('userCaption starts after the last thing Lumi said', () => {
+  const messages = [said('u1', 'Add milk.'), replied('a1', 'Added milk.'), said('u2', 'Make it'), said('u3', ' high. ')];
+  assert.deepEqual(userCaption(messages), { id: 'u2', text: 'Make it high.' });
+});
+
+test('userCaption keeps showing the turn Lumi is answering', () => {
+  const messages = [said('u1', 'Add milk.'), said('u2', 'And eggs.'), replied('a1', 'Done.')];
+  assert.deepEqual(userCaption(messages), { id: 'u1', text: 'Add milk. And eggs.' });
+});
+
+test('userCaption skips empty segments and chat messages, and is null before the user speaks', () => {
+  assert.equal(userCaption([]), null);
+  assert.equal(userCaption([replied('a1', 'Hi, I am Lumi.')]), null);
+  const chat = { id: 'c1', message: 'typed text' }; // a chat message has no transcript type
+  assert.deepEqual(userCaption([said('u1', 'Hello.'), chat, said('u2', '  ')]), { id: 'u1', text: 'Hello.' });
+});
+
+const changeOf = (action: Change['action'], task_id: number, title: string, fields: string[] = []): Change => ({
+  action,
+  task_id,
+  title,
+  fields,
+});
+
+test('addChange keeps an earlier change animating when another task changes right after', () => {
+  // Seen in an end-to-end run: "add eggs and bread" sent two boards 0.6 s apart, and the
+  // second one cut "Buy eggs"'s glow and receipt short.
+  const eggs = task(1, { title: 'Buy eggs' });
+  const bread = task(2, { title: 'Buy bread' });
+  let recent = addChange([], 1, changeOf('created', 1, 'Buy eggs'), [], [eggs]);
+  recent = addChange(recent, 2, changeOf('created', 2, 'Buy bread'), [eggs], [eggs, bread]);
+  assert.deepEqual(
+    recent.map((r) => r.text),
+    ['Added “Buy eggs”', 'Added “Buy bread”'],
+  );
+  assert.equal(cardChange(recent, 1)?.seq, 1);
+  assert.equal(cardChange(recent, 2)?.seq, 2);
+  assert.equal(cardChange(recent, 3), undefined);
+});
+
+test('addChange lets a newer change to the same task take over its card, but keeps both receipts', () => {
+  const added = task(1, { title: 'Buy eggs' });
+  const raised = task(1, { title: 'Buy eggs', priority: 'high' });
+  let recent = addChange([], 1, changeOf('created', 1, 'Buy eggs'), [], [added]);
+  recent = addChange(recent, 2, changeOf('updated', 1, 'Buy eggs', ['priority']), [added], [raised]);
+  assert.equal(cardChange(recent, 1)?.change.action, 'updated');
+  assert.deepEqual(
+    recent.map((r) => r.text),
+    ['Added “Buy eggs”', 'Changed the priority of “Buy eggs”'],
+  );
+});
+
+test('addChange words each receipt when it arrives', () => {
+  const open = task(1, { title: 'Call mom' });
+  const done = task(1, { title: 'Call mom', done: true });
+  let recent = addChange([], 1, changeOf('updated', 1, 'Call mom', ['done']), [open], [done]);
+  recent = addChange(recent, 2, changeOf('updated', 1, 'Call mom', ['done']), [done], [open]);
+  assert.deepEqual(
+    recent.map((r) => r.text),
+    ['Marked “Call mom” done', 'Reopened “Call mom”'],
+  );
+});
+
+test('withGhosts keeps every deleted task on the board until it has drifted away', () => {
+  const eggs = task(1, { title: 'Buy eggs' });
+  const bread = task(2, { title: 'Buy bread' });
+  const milk = task(3, { title: 'Buy milk' });
+  let recent = addChange([], 1, changeOf('deleted', 1, 'Buy eggs'), [eggs, bread, milk], [bread, milk]);
+  recent = addChange(recent, 2, changeOf('deleted', 2, 'Buy bread'), [bread, milk], [milk]);
+  assert.deepEqual(
+    withGhosts([milk], recent).map((t) => t.id),
+    [3, 1, 2],
+  );
+  assert.equal(cardChange(recent, 1)?.change.action, 'deleted');
+});
+
+test('a restore ends the ghost of the delete it undoes', () => {
+  const eggs = task(1, { title: 'Buy eggs' });
+  let recent = addChange([], 1, changeOf('deleted', 1, 'Buy eggs'), [eggs], []);
+  recent = addChange(recent, 2, changeOf('restored', 1, 'Buy eggs'), [], [eggs]);
+  assert.deepEqual(
+    withGhosts([eggs], recent).map((t) => t.id),
+    [1],
+  );
+  assert.equal(cardChange(recent, 1)?.change.action, 'restored');
+  // The "say undo" receipt still fades out on its own time.
+  assert.equal(recent.length, 2);
 });

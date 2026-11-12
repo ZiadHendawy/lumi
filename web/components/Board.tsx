@@ -1,29 +1,37 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { type Change, type Task, GROUP_LABELS, describeChange, friendlyDate, groupTasks } from '@/lib/board';
+import {
+  type RecentChange,
+  type Task,
+  GROUP_LABELS,
+  cardChange,
+  friendlyDate,
+  groupTasks,
+  withGhosts,
+} from '@/lib/board';
 
 type Props = {
   tasks: Task[];
-  change: Change | null; // the change that produced this board, or null for a plain refresh
-  seq: number; // bumps on every board the agent sends, so the same change twice still animates
-  ghost: Task | null; // a just-deleted task, kept for one animation so it can drift away
+  recent: RecentChange[]; // changes still animating, oldest first
+  seq: number; // bumps on every board the agent sends
   live: boolean; // false while showing the cached board from the last visit
+  onGhostGone: (seq: number) => void; // a deleted card has drifted away
+  onReceiptDone: (seq: number) => void; // a receipt toast has faded out
 };
 
 const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 
-// Pure view of the board. All animation is CSS, chosen by class names derived from `change`.
-export default function Board({ tasks, change, seq, ghost, live }: Props) {
+// Pure view of the board. All animation is CSS, chosen by class names derived from `recent`.
+export default function Board({ tasks, recent, seq, live, onGhostGone, onReceiptDone }: Props) {
   const [showDone, setShowDone] = useState(false);
-  // The seq whose ghost finished drifting away; past that point it is no longer drawn.
-  const [ghostGoneAt, setGhostGoneAt] = useState(-1);
   const now = new Date();
 
-  const showGhost = ghost !== null && ghostGoneAt !== seq;
-  const visible = ghost && showGhost ? [...tasks, ghost] : tasks;
+  const visible = withGhosts(tasks, recent);
   const lanes = groupTasks(visible, now);
   const done = visible.filter((t) => t.done);
+  // The change carried by the newest board, if it had one.
+  const change = recent.find((r) => r.seq === seq)?.change;
   const changedTask = change ? visible.find((t) => t.id === change.task_id) : undefined;
 
   // Voice-to-screen sync: bring whatever Lumi just changed into view, so the user sees it
@@ -41,22 +49,22 @@ export default function Board({ tasks, change, seq, ghost, live }: Props) {
   }, [seq]); // eslint-disable-line -- run once per board from the agent, not on every render
 
   function renderCard(task: Task) {
-    const changed = change?.task_id === task.id ? change : null;
-    const isGhost = showGhost && task.id === ghost?.id;
+    const changed = cardChange(recent, task.id);
     const classes = ['card', `prio-${task.priority}`];
     if (task.done) classes.push('is-done');
-    if (changed) classes.push(`is-${changed.action}`);
+    if (changed) classes.push(`is-${changed.change.action}`);
     return (
       <article
         // A changed card gets a fresh key, so React re-creates it and its CSS animation
         // restarts even when the same task changes twice in a row.
-        key={changed ? `${task.id}-${seq}` : task.id}
+        key={changed ? `${task.id}-${changed.seq}` : task.id}
         id={`task-${task.id}`}
         className={classes.join(' ')}
         // Lets CSS flash only the parts that changed, e.g. [data-changed~="priority"] .prio
-        data-changed={changed?.action === 'updated' ? changed.fields.join(' ') : undefined}
+        data-changed={changed?.change.action === 'updated' ? changed.change.fields.join(' ') : undefined}
         onAnimationEnd={(e) => {
-          if (isGhost && e.animationName === 'ember-away') setGhostGoneAt(seq);
+          // Takes the ghost out of the layout, so the lane closes up behind it.
+          if (changed?.ghost && e.animationName === 'ember-away') onGhostGone(changed.seq);
         }}
       >
         <div className="card-top">
@@ -127,16 +135,27 @@ export default function Board({ tasks, change, seq, ghost, live }: Props) {
         </section>
       )}
 
-      {change && (
-        // A new key per board restarts the toast's fade-in / fade-out animation.
-        <p key={seq} className={`toast toast-${change.action}`} aria-hidden="true">
-          {describeChange(change, changedTask)}
-        </p>
-      )}
-      {/* The toast is decorative; screen readers hear the same sentence from here. */}
-      <p className="sr-only" aria-live="polite">
-        {change ? describeChange(change, changedTask) : ''}
-      </p>
+      {/* One receipt per recent change, stacked oldest first, each up for its full time. A change
+          is forgotten when its receipt has faded, which is after its card animation has ended. */}
+      <div className="toasts" aria-hidden="true">
+        {recent.map((r) => (
+          <p
+            key={r.seq}
+            className={`toast toast-${r.change.action}`}
+            onAnimationEnd={(e) => {
+              if (e.animationName === 'toast') onReceiptDone(r.seq);
+            }}
+          >
+            {r.text}
+          </p>
+        ))}
+      </div>
+      {/* The toasts are decorative; screen readers hear each new sentence from here. */}
+      <div className="sr-only" aria-live="polite">
+        {recent.map((r) => (
+          <p key={r.seq}>{r.text}</p>
+        ))}
+      </div>
     </section>
   );
 }

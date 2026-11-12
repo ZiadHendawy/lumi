@@ -151,3 +151,65 @@ export function describeChange(change: Change, task: Task | undefined): string {
       return `Changed the ${listOf(change.fields.map((f) => FIELD_NAMES[f] ?? f))} of ${name}`;
   }
 }
+
+// --- Recent changes: each one keeps its card animation and its receipt until they have played out.
+
+// One request can make several changes ~0.6 s apart ("add eggs and bread" is two board pushes),
+// so the screen keeps a list of recent changes, not only the last one. Otherwise the second push
+// cuts the first card's glow and receipt short. Each entry is dropped when its receipt fades.
+export type RecentChange = {
+  seq: number; // the board push that carried it: unique, so it doubles as a React key
+  change: Change;
+  text: string; // the receipt, worded on arrival so a later change to the task can't make it untrue
+  onCard: boolean; // false once a newer change to the same task takes over that card's animation
+  ghost: Task | null; // a deleted task's last copy, drawn until it has drifted away
+};
+
+// `before` and `after` are the boards either side of the push that carried `change`.
+export function addChange(
+  recent: RecentChange[],
+  seq: number,
+  change: Change,
+  before: Task[],
+  after: Task[],
+): RecentChange[] {
+  // A newer change to the same task restarts its card's animation (and a restore ends a
+  // delete's ghost), but the older receipt stays up for its full time.
+  const older = recent.map((r) => (r.change.task_id === change.task_id ? { ...r, onCard: false, ghost: null } : r));
+  // A deleted task is no longer in `after`; keep its last copy so it can animate out.
+  const ghost = change.action === 'deleted' ? (before.find((t) => t.id === change.task_id) ?? null) : null;
+  const text = describeChange(change, after.find((t) => t.id === change.task_id));
+  return [...older, { seq, change, text, onCard: true, ghost }];
+}
+
+// The change a card is animating, if any.
+export function cardChange(recent: RecentChange[], taskId: number): RecentChange | undefined {
+  return recent.find((r) => r.onCard && r.change.task_id === taskId);
+}
+
+// The board's tasks plus the deleted ones that are still drifting away.
+export function withGhosts(tasks: Task[], recent: RecentChange[]): Task[] {
+  return [...tasks, ...recent.flatMap((r) => (r.ghost ? [r.ghost] : []))];
+}
+
+// --- Captions: what the user said in their latest turn.
+
+// The fields of a LiveKit session message that the caption needs. Chat messages have no `type`.
+type TranscriptMessage = { id: string; type?: string; message: string };
+
+// Deepgram can end one spoken turn in several final segments ("Add a task to call the bank
+// tomorrow." + "High priority."), so the caption is the whole run of user segments since Lumi
+// last spoke, not only the newest one. While Lumi answers, it still shows the turn being answered.
+// The id is the run's first segment, so the caption fades in once per turn, not once per segment.
+export function userCaption(messages: TranscriptMessage[]): { id: string; text: string } | null {
+  const last = messages.findLastIndex((m) => m.type === 'userTranscript');
+  if (last === -1) return null;
+  let first = last;
+  while (first > 0 && messages[first - 1].type !== 'agentTranscript') first--;
+  const segments = messages.slice(first, last + 1).filter((m) => m.type === 'userTranscript');
+  const text = segments
+    .map((m) => m.message.trim())
+    .filter((words) => words !== '')
+    .join(' ');
+  return { id: segments[0].id, text };
+}

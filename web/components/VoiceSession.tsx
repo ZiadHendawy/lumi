@@ -13,13 +13,21 @@ import {
   useTrackVolume,
 } from '@livekit/components-react';
 import Board from '@/components/Board';
-import { type Change, type Task, loadCachedTasks, parseBoard, saveCachedTasks } from '@/lib/board';
+import {
+  type RecentChange,
+  type Task,
+  addChange,
+  loadCachedTasks,
+  parseBoard,
+  saveCachedTasks,
+  userCaption,
+} from '@/lib/board';
 import { getUserId } from '@/lib/userId';
 
 const tokenSource = TokenSource.endpoint('/api/token');
 const BOARD_TOPIC = 'lumi.board'; // must match the topic the agent sends on
 
-type BoardState = { tasks: Task[]; change: Change | null; seq: number; ghost: Task | null; live: boolean };
+type BoardState = { tasks: Task[]; recent: RecentChange[]; seq: number; live: boolean };
 
 type LanternState =
   | 'waking'
@@ -61,9 +69,8 @@ export default function VoiceSession() {
   // Start from the board cached on the last visit, so it's there during the agent's cold start.
   const [board, setBoard] = useState<BoardState>(() => ({
     tasks: loadCachedTasks(userId) ?? [],
-    change: null,
+    recent: [],
     seq: 0,
-    ghost: null,
     live: false,
   }));
 
@@ -77,10 +84,9 @@ export default function VoiceSession() {
       if (!payload) return;
       saveCachedTasks(userId, payload.tasks);
       setBoard((prev) => {
-        const change = payload.change;
-        // A deleted task is no longer in `tasks`; keep its last copy so it can animate out.
-        const ghost = change?.action === 'deleted' ? (prev.tasks.find((t) => t.id === change.task_id) ?? null) : null;
-        return { tasks: payload.tasks, change, ghost, seq: prev.seq + 1, live: true };
+        const seq = prev.seq + 1;
+        const recent = payload.change ? addChange(prev.recent, seq, payload.change, prev.tasks, payload.tasks) : prev.recent;
+        return { tasks: payload.tasks, recent, seq, live: true };
       });
     });
     return () => room.unregisterTextStreamHandler(BOARD_TOPIC);
@@ -94,6 +100,14 @@ export default function VoiceSession() {
       session.end();
     };
   }, []); // eslint-disable-line -- run once per page load, not on every session object change
+
+  // The board calls these when an animation ends, so each change leaves the screen on its own time.
+  function ghostGone(seq: number) {
+    setBoard((prev) => ({ ...prev, recent: prev.recent.map((r) => (r.seq === seq ? { ...r, ghost: null } : r)) }));
+  }
+  function receiptDone(seq: number) {
+    setBoard((prev) => ({ ...prev, recent: prev.recent.filter((r) => r.seq !== seq) }));
+  }
 
   async function startTalking() {
     setPhase('starting');
@@ -150,7 +164,14 @@ export default function VoiceSession() {
       {/* The warm light the lantern casts on the page; its strength follows the lantern state in CSS. */}
       <div className="room-light" data-state={state} aria-hidden="true" />
 
-      <Board tasks={board.tasks} change={board.change} seq={board.seq} ghost={board.ghost} live={board.live} />
+      <Board
+        tasks={board.tasks}
+        recent={board.recent}
+        seq={board.seq}
+        live={board.live}
+        onGhostGone={ghostGone}
+        onReceiptDone={receiptDone}
+      />
 
       <div className="dock" data-state={state}>
         <Captions session={session} />
@@ -204,19 +225,19 @@ function Lantern(props: { state: LanternState; track?: TrackReference; onClick?:
   );
 }
 
-// The latest thing the user said (dim) and Lumi's current line (bright), so a misheard word is easy to spot.
+// The user's latest turn (dim) and Lumi's current line (bright), so a misheard word is easy to spot.
 function Captions({ session }: { session: UseSessionReturn }) {
   const { messages } = useSessionMessages(session);
+  const user = userCaption(messages);
   const userAt = messages.findLastIndex((m) => m.type === 'userTranscript');
   const lumiAt = messages.findLastIndex((m) => m.type === 'agentTranscript');
-  const user = messages[userAt];
   // Hide Lumi's previous reply once the user has said something newer; it would read as an answer.
   const lumi = lumiAt > userAt ? messages[lumiAt] : undefined;
   return (
     <div className="captions" aria-live="polite">
       {user && (
         <p key={user.id} className="caption caption-user">
-          {user.message}
+          {user.text}
         </p>
       )}
       {lumi && (
