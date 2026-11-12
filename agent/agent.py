@@ -184,6 +184,8 @@ async def entrypoint(ctx: JobContext) -> None:
             # Only replies to the user: the greeting is said, with no turn to time.
             if timings["e2e_latency"] is not None:
                 write_metrics(memory.record_turn, session.userdata.db, turn | timings)
+                # The same row, live, for the browser's X-ray panel and session receipt.
+                run_beside(tools.send_hint(ctx.room, tools.TURN_TOPIC, turn | timings))
             turn.clear()
         # The user's message carries the stages before the LLM: how long the final
         # transcript took, and how long the turn detector waited before replying.
@@ -211,7 +213,7 @@ async def entrypoint(ctx: JobContext) -> None:
         # say "Searching the web..." during the 1-3 s a search takes.
         payload = tools.activity_payload(ev.update)
         if payload:
-            run_beside(tools.push_activity(ctx.room, payload))
+            run_beside(tools.send_hint(ctx.room, tools.ACTIVITY_TOPIC, payload))
 
     session.on("error", lambda ev: apologise_if_no_model_answered(session, ev))
 

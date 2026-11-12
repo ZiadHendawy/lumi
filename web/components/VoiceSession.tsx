@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { TokenSource } from 'livekit-client';
 import {
   RoomAudioRenderer,
@@ -13,6 +13,7 @@ import {
   useTrackVolume,
 } from '@livekit/components-react';
 import Board from '@/components/Board';
+import { SessionReceipt, XRay } from '@/components/XRay';
 import {
   type Activity,
   type Facts,
@@ -29,11 +30,14 @@ import {
   saveCachedBoard,
   userCaption,
 } from '@/lib/board';
+import { type Turn, parseTurn } from '@/lib/turns';
 import { getUserId } from '@/lib/userId';
 
 const tokenSource = TokenSource.endpoint('/api/token');
 const BOARD_TOPIC = 'lumi.board'; // must match the topic the agent sends on
 const ACTIVITY_TOPIC = 'lumi.activity'; // which tool the agent is running
+const TURN_TOPIC = 'lumi.turn'; // where the time went in each reply
+const PROMPT_TOPIC = 'lumi.prompt'; // the instructions as the model reads them
 
 type BoardState = {
   tasks: Task[];
@@ -43,6 +47,10 @@ type BoardState = {
   factsChanged: { keys: string[]; seq: number; text: string[] };
   seq: number;
   live: boolean;
+  // This session's tally for the receipt. Kept here so the updater below can count from
+  // the previous board, and stays a pure function of it.
+  changes: number;
+  undos: number;
 };
 
 type LanternState =
@@ -93,8 +101,16 @@ export default function VoiceSession() {
       factsChanged: { keys: [], seq: 0, text: [] },
       seq: 0,
       live: false,
+      changes: 0,
+      undos: 0,
     };
   });
+  const [turns, setTurns] = useState<Turn[]>([]); // this session's replies, from the agent
+  const [leads, setLeads] = useState<number[]>([]); // board ahead of voice, measured here
+  const [prompt, setPrompt] = useState<string | null>(null);
+  const [xray, setXray] = useState(false);
+  // When the last changed board arrived, until Lumi starts speaking about it.
+  const boardAt = useRef<number | null>(null);
 
   // The agent sends the whole board as one JSON text stream after every change (and once when
   // we join). Registered before connecting so the first board can't arrive with no listener.
@@ -105,6 +121,7 @@ export default function VoiceSession() {
       const payload = parseBoard(await reader.readAll());
       if (!payload) return;
       saveCachedBoard(userId, payload.tasks, payload.facts);
+      if (payload.change) boardAt.current = performance.now();
       setBoard((prev) => {
         const seq = prev.seq + 1;
         const recent = payload.change ? addChange(prev.recent, seq, payload.change, prev.tasks, payload.tasks) : prev.recent;
@@ -116,7 +133,17 @@ export default function VoiceSession() {
               text: describeFactChanges(prev.facts, payload.facts),
             }
           : prev.factsChanged;
-        return { tasks: payload.tasks, facts: payload.facts, recent, factsChanged, seq, live: true };
+        const factChanges = prev.live ? describeFactChanges(prev.facts, payload.facts).length : 0;
+        return {
+          tasks: payload.tasks,
+          facts: payload.facts,
+          recent,
+          factsChanged,
+          seq,
+          live: true,
+          changes: prev.changes + (payload.change ? 1 : 0) + factChanges,
+          undos: prev.undos + (payload.change?.action === 'restored' ? 1 : 0),
+        };
       });
     });
     // A tool starting or ending, so the screen can say what Lumi is doing during a slow one.
@@ -124,9 +151,21 @@ export default function VoiceSession() {
       const event = parseActivity(await reader.readAll());
       if (event) setRunning((prev) => applyActivity(prev, event));
     });
+    // Each reply's timings and the prompt as the model reads it, for the X-ray panel.
+    room.registerTextStreamHandler(TURN_TOPIC, async (reader) => {
+      const turn = parseTurn(await reader.readAll());
+      if (turn) setTurns((prev) => [...prev, turn]);
+    });
+    room.registerTextStreamHandler(PROMPT_TOPIC, async (reader) => {
+      const text = await reader.readAll();
+      try {
+        setPrompt(JSON.parse(text).instructions ?? null);
+      } catch {
+        // A broken hint is just not shown.
+      }
+    });
     return () => {
-      room.unregisterTextStreamHandler(BOARD_TOPIC);
-      room.unregisterTextStreamHandler(ACTIVITY_TOPIC);
+      for (const topic of [BOARD_TOPIC, ACTIVITY_TOPIC, TURN_TOPIC, PROMPT_TOPIC]) room.unregisterTextStreamHandler(topic);
     };
   }, [session.room, userId]);
 
@@ -134,7 +173,24 @@ export default function VoiceSession() {
   // "ended" message (a dropped connection) can't leave a card shimmering forever.
   useEffect(() => {
     if (agent.state !== 'thinking') setRunning([]);
+    // The screen-lead, measured where the user is: a changed board arriving -> Lumi's state
+    // turning "speaking" (its state attribute, which travels with the audio). Listening means a
+    // new turn has begun, so an old board time must not count against it.
+    if (agent.state === 'speaking' && boardAt.current !== null) {
+      const lead = (performance.now() - boardAt.current) / 1000;
+      setLeads((prev) => [...prev, lead]);
+    }
+    if (agent.state === 'speaking' || agent.state === 'listening') boardAt.current = null;
   }, [agent.state]);
+
+  // X opens the X-ray panel. Ignored with a modifier, so browser shortcuts keep working.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key.toLowerCase() === 'x' && !e.metaKey && !e.ctrlKey && !e.altKey) setXray((open) => !open);
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Connect (and dispatch the agent) on page load, so the cold start overlaps with the
   // user reading the page. The mic stays off until they tap the lantern.
@@ -178,6 +234,10 @@ export default function VoiceSession() {
   async function wakeAgain() {
     setPhase('idle');
     setError(null);
+    // A new session starts a new receipt.
+    setTurns([]);
+    setLeads([]);
+    setBoard((prev) => ({ ...prev, changes: 0, undos: 0 }));
     await session.end();
     await session.start({ tracks: { microphone: { enabled: false } } });
   }
@@ -225,8 +285,17 @@ export default function VoiceSession() {
         onReceiptDone={receiptDone}
       />
 
+      <button className="xray-toggle" onClick={() => setXray(!xray)} aria-pressed={xray}>
+        X-ray
+      </button>
+      {xray && <XRay turns={turns} leads={leads} prompt={prompt} onClose={() => setXray(false)} />}
+
       <div className="dock" data-state={state}>
-        <Captions session={session} />
+        {state === 'ended' ? (
+          <SessionReceipt turns={turns} leads={leads} changes={board.changes} undos={board.undos} />
+        ) : (
+          <Captions session={session} />
+        )}
         <div className="lantern-row">
           <Lantern state={state} track={volumeTrack} onClick={onLanternClick} />
           {talking && (

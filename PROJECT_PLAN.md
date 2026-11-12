@@ -37,6 +37,7 @@
 | Icon and link preview (2026-11-12) | A lantern mark as `app/icon.svg`, generated `apple-icon` and `opengraph-image` with `next/og`, and a `manifest.ts` | The tab, the home screen and the link preview someone pastes are the first things a visitor sees, before any voice turn. Next's file conventions add the `<head>` tags themselves and `next/og` ships with Next, so no dependency. The masthead, apple icon and preview share one `LanternMark` component; `icon.svg` is a static copy because Next serves it as a file. |
 | Cost model (2026-11-12) | **A "What it would cost" section on `/stats`**: the last 30 days at pay-as-you-go list prices (`PRICES` in `web/lib/stats.ts`, sources in TECH_STACK §15), split by provider, per spoken reply and per 1,000 conversations (assumed 8 replies each) | It turns the free-tier usage we already record into the number a buyer asks about. No new data and no new dependency: it reuses `provider_usage`, `turn_metrics` and Tavily's usage count. The assumptions (agent minutes from speech-to-text minutes, replies per conversation) are stated on the page rather than hidden. |
 | Showing tool activity (2026-11-12) | **Forward LiveKit's `tool_execution_updated` (start, end) on a `lumi.activity` text stream.** The lantern says "Searching the web…"; a card being looked up breathes light. | A web search takes 1–3 s that used to be a silent "thinking". The event fires when the model has decided, before the tool runs, so it is the earliest honest signal. No tool code changed: the session event covers every tool. The board push stays the only truth; activity is cleared whenever Lumi isn't thinking. |
+| X-ray and session receipt (2026-11-12) | **The agent sends each reply's timings (`lumi.turn`) and the rendered prompt (`lumi.prompt`); the browser measures its own screen lead.** Press X for a live timing chart, the model that answered and "What Lumi sees"; End shows a one-card receipt. | The deep dives were in logs and on `/stats`, which a visitor may never open. Now they are on the page while you talk. No new data: the turn row is the one already saved to `turn_metrics`. The browser's own lead (board arriving → Lumi speaking) closes the sync deep dive's "browser-side timing in production" item. |
 
 ## Guiding principles
 1. **Infra first.** Get a working voice loop deployed end to end before any product work.
@@ -70,8 +71,9 @@ LiveKit Cloud ◀──▶ Agent worker (Python, LiveKit Cloud)
 **Agent ↔ browser contract** (the only coupling between `agent/` and `web/`):
 1. `lumi.board` text stream, agent → browser: `{"tasks": [{id, title, body, priority, target_date, done, updated_at}], "facts": {key: value}, "change": {action, task_id, title, fields} | null}`. It's sent when the user joins (at page load) and after every change, facts included.
 2. `lumi.activity` text stream, agent → browser: `{status: "started", call_id, tool, task_id}` when the model picks a tool (before it runs) and `{status: "ended", call_id}` after. Only a hint for the screen; the board stays the truth.
-3. `lumi.start` RPC, browser → agent, on click: payload `{"timezone": "<IANA name>"}`, so "today" and "tomorrow" mean the user's day.
-4. Captions use LiveKit's standard transcription streams.
+3. `lumi.turn` and `lumi.prompt` text streams, agent → browser: each reply's stage timings (the `turn_metrics` row) and the rendered instructions, for the X-ray panel and the session receipt.
+4. `lumi.start` RPC, browser → agent, on click: payload `{"timezone": "<IANA name>"}`, so "today" and "tomorrow" mean the user's day.
+5. Captions use LiveKit's standard transcription streams.
 
 | Layer | Choice | Why |
 |---|---|---|

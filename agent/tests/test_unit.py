@@ -451,6 +451,8 @@ async def test_board_push_sends_the_contract_payload(db, new_user):
         target_date="2026-11-28",
     )
 
+    # Only the board matters here; the X-ray prompt goes out on its own topic.
+    sent = [(topic, p) for topic, p in sent if topic != "lumi.prompt"]
     assert [topic for topic, _ in sent] == ["lumi.board", "lumi.board"]
     assert sent[0][1]["change"] == {
         "action": "created",
@@ -469,7 +471,8 @@ async def test_fact_changes_reach_the_screen_without_a_change_note(db, new_user)
     sent = []
 
     async def send_text(text, *, topic):
-        sent.append(json.loads(text))
+        if topic == "lumi.board":
+            sent.append(json.loads(text))
 
     room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
     state = tools.SessionState(user_id=new_user(), db=db, room=room, fixed_today=FRIDAY)
@@ -816,11 +819,32 @@ async def test_activity_goes_out_on_its_own_topic_and_never_raises():
         sent.append((topic, json.loads(text)))
 
     room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
-    await tools.push_activity(room, {"status": "ended", "call_id": "c"})
+    await tools.send_hint(
+        room, tools.ACTIVITY_TOPIC, {"status": "ended", "call_id": "c"}
+    )
     assert sent == [("lumi.activity", {"status": "ended", "call_id": "c"})]
 
     async def broken(text, *, topic):
         raise ConnectionError("room closed")
 
     room = SimpleNamespace(local_participant=SimpleNamespace(send_text=broken))
-    await tools.push_activity(room, {"status": "ended", "call_id": "c"})  # no raise
+    await tools.send_hint(room, tools.ACTIVITY_TOPIC, {"call_id": "c"})  # no raise
+
+
+@needs_db
+async def test_the_screen_gets_the_prompt_the_model_reads(db, new_user):
+    sent = []
+
+    async def send_text(text, *, topic):
+        sent.append((topic, json.loads(text)))
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
+    state = tools.SessionState(user_id=new_user(), db=db, room=room, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    await tools.create_task(ctx, title="Call mom")
+
+    prompts = [p["instructions"] for topic, p in sent if topic == "lumi.prompt"]
+    assert prompts == [ctx.session.current_agent.instructions]
+    assert "Call mom" in prompts[0]
+    # The board goes first: the prompt is only for the X-ray panel.
+    assert [topic for topic, _ in sent] == ["lumi.board", "lumi.prompt"]

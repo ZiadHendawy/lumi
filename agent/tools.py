@@ -30,6 +30,8 @@ logger = logging.getLogger("lumi")
 
 BOARD_TOPIC = "lumi.board"  # the browser listens on this text-stream topic
 ACTIVITY_TOPIC = "lumi.activity"  # which tool is running right now
+TURN_TOPIC = "lumi.turn"  # where the time went in each reply (the X-ray panel)
+PROMPT_TOPIC = "lumi.prompt"  # the instructions as the model reads them
 # A create with the same title this soon after another is treated as a repeat call.
 DUPLICATE_CREATE_SECONDS = 10
 
@@ -72,9 +74,12 @@ async def refresh_instructions(
         tasks = await memory.list_tasks(state.db, state.user_id)
     if facts is None:
         facts = await memory.load_facts(state.db, state.user_id)
-    await agent.update_instructions(
-        prompt.build_instructions(state.today(), tasks, facts)
-    )
+    instructions = prompt.build_instructions(state.today(), tasks, facts)
+    await agent.update_instructions(instructions)
+    # The X-ray panel shows exactly what the model reads: the board, the calendar and
+    # the facts, as text. send_text returns in ~2 ms, so the turn barely waits.
+    if state.room is not None:
+        await send_hint(state.room, PROMPT_TOPIC, {"instructions": instructions})
 
 
 def board_payload(
@@ -154,14 +159,13 @@ def activity_payload(update) -> dict | None:
     return None
 
 
-async def push_activity(room: rtc.Room, payload: dict) -> None:
+async def send_hint(room: rtc.Room, topic: str, payload: dict) -> None:
+    """Send something the screen shows but nothing depends on (tool activity, turn
+    timings, the prompt). Unlike the board, a failed send is only logged."""
     try:
-        await room.local_participant.send_text(
-            json.dumps(payload), topic=ACTIVITY_TOPIC
-        )
+        await room.local_participant.send_text(json.dumps(payload), topic=topic)
     except Exception:
-        # Only a hint for the screen; the tool itself must not notice a failed send.
-        logger.warning("activity push failed", exc_info=True)
+        logger.warning("hint push failed", extra={"topic": topic}, exc_info=True)
 
 
 async def after_task_change(

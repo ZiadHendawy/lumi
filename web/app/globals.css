@@ -984,6 +984,180 @@ button {
   text-align: center;
 }
 
+/* ---------- End-of-session receipt: the three deep dives as one card ---------- */
+
+.receipt {
+  width: min(100%, 460px);
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--glass);
+  animation: caption-in 0.45s ease-out;
+}
+.receipt-title {
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.receipt ul {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
+  color: var(--paper-dim);
+}
+.receipt strong {
+  font-weight: 600;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- X-ray: where the time went, and what the model reads ---------- */
+
+.xray-toggle {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 40;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(12, 10, 8, 0.6);
+  font: 600 11px/1.4 var(--font-body);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+  cursor: pointer;
+}
+.xray-toggle:hover,
+.xray-toggle[aria-pressed='true'] {
+  color: var(--amber);
+  border-color: var(--amber-soft);
+}
+
+.xray {
+  position: fixed;
+  top: 60px;
+  right: 20px;
+  z-index: 40;
+  width: min(380px, calc(100vw - 32px));
+  max-height: calc(100svh - 80px);
+  overflow-y: auto;
+  padding: 16px 18px;
+  border: 1px solid rgba(255, 210, 140, 0.18);
+  border-radius: var(--radius);
+  background: rgba(16, 13, 10, 0.94);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  font-size: 13px;
+  color: var(--paper-dim);
+}
+.xray-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.xray h2 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--amber);
+}
+.xray-close {
+  border: 0;
+  background: none;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--paper-faint);
+  cursor: pointer;
+}
+.xray-total {
+  margin: 10px 0 12px;
+  font-size: 15px;
+  color: var(--paper);
+}
+.xray strong {
+  font-weight: 600;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+}
+.xray-model {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 11px;
+  color: var(--paper-faint);
+}
+.xray-stages {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+/* Label and value on one line, the bar under them. */
+.xray-stage {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'label value' 'bar bar';
+  gap: 3px 10px;
+}
+.xray-label {
+  grid-area: label;
+}
+.xray-value {
+  grid-area: value;
+  font-variant-numeric: tabular-nums;
+  color: var(--paper);
+}
+.xray-bar {
+  grid-area: bar;
+  height: 4px;
+  min-width: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--ember), var(--amber));
+  box-shadow: 0 0 10px var(--amber-soft);
+}
+.xray-stage.is-skipped {
+  opacity: 0.4;
+}
+.xray-line {
+  margin: 6px 0;
+}
+.xray-prompt {
+  margin-top: 12px;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+.xray-prompt summary {
+  cursor: pointer;
+  color: var(--paper);
+}
+.xray-note {
+  margin: 8px 0;
+  font-size: 12px;
+  color: var(--paper-faint);
+}
+.xray-prompt pre {
+  max-height: 280px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  font: 11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  white-space: pre-wrap;
+  color: var(--paper-dim);
+}
+
 /* ---------- The lantern ----------
    --level (0-1) is the live voice volume, set inline by the Lantern component. */
 
@@ -1235,6 +1409,15 @@ button {
   }
   .caption-lumi {
     font-size: 17px;
+  }
+  .xray-toggle {
+    top: 14px;
+    right: 14px;
+  }
+  .xray {
+    top: 52px;
+    right: 16px;
+    max-height: calc(100svh - 72px);
   }
 }
 

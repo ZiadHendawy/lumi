@@ -49,6 +49,8 @@ Groq's free tier was the constraint all day. gpt-oss-120b was at its 200K tokens
 
 Live, Gemini turns took 5.1–10.3 s end to end (LLM first token 2.7–5.5 s). Gemini's free tier is slow at random rather than slow because of the model: a three-word prompt took 0.9–10.8 s across four Flash-Lite versions, with some 503s. It can only be a last resort.
 
+**Live, on the page:** press X during a conversation to see these stages for every reply (the X-ray panel reads the same row the agent saves to `turn_metrics`).
+
 **Our own code**, offline:
 
 | What | Time | Note |
@@ -312,6 +314,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 | Captions | `userCaption` joins every user segment since Lumi last spoke (#15). Lumi's current line shows below. | A misheard word is easy to spot. |
 | Reduced motion | `prefers-reduced-motion` swaps the keyframes for gentler ones | Same information, less movement. |
 | Tool activity | `tool_execution_updated` → `lumi.activity`: the lantern says what Lumi is doing, and a card being searched breathes light (label after 0.4 s, so fast tools don't flash) | A 1–3 s web search is no longer a silent pause. It's the earliest honest signal: the model has decided, the tool hasn't run. |
+| X-ray panel and session receipt | Press X: the last reply's stages, the model that answered, the screen lead (agent and browser), and the prompt as the model reads it. End shows a receipt: replies, median time to voice, changes and undos, median screen lead. | The three deep dives, visible while you use the app instead of only in logs. |
 | Memory shelf | The facts ride in every board push; `changedFacts` lights only the chip that changed | "Remembers you" is visible too, not only spoken, and it shows the stored value, not the model's claim. |
 
 ### Bugs the live run found, all fixed
@@ -341,7 +344,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 1. **Measure on the deployed URL**, with the agent in `us-east` next to Neon.
 2. **Put the live-audio harness in the repo** and run it nightly. Today it is a one-off script on the dev Mac.
 3. ~~**A "working on it" state on the card** while a slow tool runs~~ **Done** (tool activity, above).
-4. **Browser-side timing in production:** log when each board arrives against when Lumi's audio starts, instead of reading it from a test harness.
+4. ~~**Browser-side timing in production**~~ **Done:** the browser measures each changed board arriving against Lumi's state turning "speaking", and shows it in the X-ray panel and the session receipt. It reads the agent's state attribute rather than the audio itself, so it is close but not exact.
 5. **Highlight the words that changed in the notes**, not the whole notes area, for long notes from web search.
 
 ### How to reproduce
