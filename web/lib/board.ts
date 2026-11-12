@@ -261,6 +261,35 @@ export function activityText(running: Activity[]): string | null {
   return latest ? (ACTIVITY_TEXT[latest.tool] ?? 'Working on it…') : null;
 }
 
+// --- Read-along: the tasks Lumi is talking about, lit while it says them.
+
+// Lowercase words separated by single spaces, so "Call the bank," matches "call the bank".
+// \p{L} and \p{N} keep letters and digits in any script, not only English.
+function words(text: string): string {
+  return text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+// The tasks whose whole title appears in what Lumi has said so far. LiveKit sends Lumi's
+// caption in step with the audio, so a card lights up as its title is spoken. Whole words
+// only ("eggs" doesn't light "Buy eggshells"), and titles under three letters are skipped,
+// so a task called "Go" doesn't light up on every sentence.
+export function spokenTaskIds(caption: string, tasks: Task[]): number[] {
+  const said = ` ${words(caption)} `;
+  return tasks
+    .filter((t) => {
+      const title = words(t.title);
+      return title.length >= 3 && said.includes(` ${title} `);
+    })
+    .map((t) => t.id);
+}
+
+// The caption split before its last word, which is the word being spoken right now.
+export function splitLastWord(text: string): [string, string] {
+  const trimmed = text.trimEnd();
+  const at = trimmed.lastIndexOf(' ') + 1;
+  return [trimmed.slice(0, at), trimmed.slice(at)];
+}
+
 // --- Captions: what the user said in their latest turn.
 
 // The fields of a LiveKit session message that the caption needs. Chat messages have no `type`.

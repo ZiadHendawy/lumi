@@ -19,6 +19,8 @@ import {
   groupOf,
   groupTasks,
   parseBoard,
+  splitLastWord,
+  spokenTaskIds,
   userCaption,
   withGhosts,
 } from './board.ts';
@@ -252,6 +254,25 @@ test('a restore ends the ghost of the delete it undoes', () => {
   assert.equal(cardChange(recent, 1)?.change.action, 'restored');
   // The "say undo" receipt still fades out on its own time.
   assert.equal(recent.length, 2);
+});
+
+test('spokenTaskIds lights the tasks whose whole title Lumi has said', () => {
+  const tasks = [
+    task(1, { title: 'Call the bank' }),
+    task(2, { title: 'Buy eggs' }),
+    task(3, { title: 'Go' }),
+    task(4, { title: 'اتصل بأمي' }),
+  ];
+  assert.deepEqual(spokenTaskIds('First, call the bank. Then', tasks), [1]);
+  assert.deepEqual(spokenTaskIds('You have Call the bank and buy eggs, then go.', tasks), [1, 2]);
+  assert.deepEqual(spokenTaskIds('Buy eggshells', tasks), []); // whole words only
+  assert.deepEqual(spokenTaskIds('Call the', tasks), []); // not yet said in full
+  assert.deepEqual(spokenTaskIds('ثم اتصل بأمي', tasks), [4]); // any script
+});
+
+test('splitLastWord separates the word being spoken', () => {
+  assert.deepEqual(splitLastWord('Done, call the bank '), ['Done, call the ', 'bank']);
+  assert.deepEqual(splitLastWord('Done'), ['', 'Done']);
 });
 
 test('changedFacts lists new and changed facts, not the unchanged ones', () => {

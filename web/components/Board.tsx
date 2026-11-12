@@ -24,6 +24,7 @@ type Props = {
   seq: number; // bumps on every board the agent sends
   live: boolean; // false while showing the cached board from the last visit
   working: Activity[]; // tools running now; a card with a running tool shimmers
+  spoken: number[]; // tasks Lumi is naming right now (read-along)
   onGhostGone: (seq: number) => void; // a deleted card has drifted away
   onReceiptDone: (seq: number) => void; // a receipt toast has faded out
 };
@@ -31,7 +32,7 @@ type Props = {
 const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 
 // Pure view of the board. All animation is CSS, chosen by class names derived from `recent`.
-export default function Board({ tasks, facts, factsChanged, recent, seq, live, working, onGhostGone, onReceiptDone }: Props) {
+export default function Board({ tasks, facts, factsChanged, recent, seq, live, working, spoken, onGhostGone, onReceiptDone }: Props) {
   const [showDone, setShowDone] = useState(false);
   const now = new Date();
 
@@ -63,6 +64,7 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
     if (changed) classes.push(`is-${changed.change.action}`);
     const busy = working.find((a) => a.task_id === task.id);
     if (busy) classes.push('is-working');
+    if (spoken.includes(task.id)) classes.push('is-spoken');
     return (
       <article
         // A changed card gets a fresh key, so React re-creates it and its CSS animation

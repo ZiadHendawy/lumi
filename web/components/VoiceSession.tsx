@@ -28,6 +28,8 @@ import {
   parseActivity,
   parseBoard,
   saveCachedBoard,
+  splitLastWord,
+  spokenTaskIds,
   userCaption,
 } from '@/lib/board';
 import { type Turn, parseTurn } from '@/lib/turns';
@@ -109,6 +111,7 @@ export default function VoiceSession() {
   const [leads, setLeads] = useState<number[]>([]); // board ahead of voice, measured here
   const [prompt, setPrompt] = useState<string | null>(null);
   const [xray, setXray] = useState(false);
+  const [spoken, setSpoken] = useState<number[]>([]); // tasks Lumi is talking about
   // When the last changed board arrived, until Lumi starts speaking about it.
   const boardAt = useRef<number | null>(null);
 
@@ -281,6 +284,8 @@ export default function VoiceSession() {
         seq={board.seq}
         live={board.live}
         working={running}
+        // Only while Lumi's voice is playing: the caption stays up afterwards, the spotlight doesn't.
+        spoken={state === 'speaking' ? spoken : []}
         onGhostGone={ghostGone}
         onReceiptDone={receiptDone}
       />
@@ -294,7 +299,7 @@ export default function VoiceSession() {
         {state === 'ended' ? (
           <SessionReceipt turns={turns} leads={leads} changes={board.changes} undos={board.undos} />
         ) : (
-          <Captions session={session} />
+          <Captions session={session} tasks={board.tasks} onSpoken={setSpoken} />
         )}
         <div className="lantern-row">
           <Lantern state={state} track={volumeTrack} onClick={onLanternClick} />
@@ -347,13 +352,23 @@ function Lantern(props: { state: LanternState; track?: TrackReference; onClick?:
 }
 
 // The user's latest turn (dim) and Lumi's current line (bright), so a misheard word is easy to spot.
-function Captions({ session }: { session: UseSessionReturn }) {
+// Lumi's line arrives in step with the audio (LiveKit syncs the transcript to the speech), so its
+// last word is the one being spoken: it gets the highlight, and the tasks named so far light up.
+function Captions(props: { session: UseSessionReturn; tasks: Task[]; onSpoken: (ids: number[]) => void }) {
+  const { session, tasks, onSpoken } = props;
   const { messages } = useSessionMessages(session);
   const user = userCaption(messages);
   const userAt = messages.findLastIndex((m) => m.type === 'userTranscript');
   const lumiAt = messages.findLastIndex((m) => m.type === 'agentTranscript');
   // Hide Lumi's previous reply once the user has said something newer; it would read as an answer.
   const lumi = lumiAt > userAt ? messages[lumiAt] : undefined;
+  const ids = lumi ? spokenTaskIds(lumi.message, tasks) : [];
+  const idsKey = ids.join(',');
+  // Tell the board only when the set changes, not on every word.
+  useEffect(() => {
+    onSpoken(idsKey ? idsKey.split(',').map(Number) : []);
+  }, [idsKey, onSpoken]);
+  const [said, now] = splitLastWord(lumi?.message ?? '');
   return (
     <div className="captions" aria-live="polite">
       {user && (
@@ -363,7 +378,10 @@ function Captions({ session }: { session: UseSessionReturn }) {
       )}
       {lumi && (
         <p key={lumi.id} className="caption caption-lumi">
-          {lumi.message}
+          <span>
+            {said}
+            <span className="word-now">{now}</span>
+          </span>
         </p>
       )}
     </div>

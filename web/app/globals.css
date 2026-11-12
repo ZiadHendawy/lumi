@@ -542,6 +542,16 @@ button {
   box-shadow: none;
 }
 
+/* Read-along: Lumi is saying this card's title right now. A transition, not an animation,
+   so it fades in and out with the voice and never fights a change animation. */
+.card.is-spoken {
+  border-color: rgba(255, 214, 150, 0.75);
+  box-shadow:
+    0 0 0 1px rgba(255, 200, 120, 0.35),
+    0 0 46px 4px var(--amber-soft);
+  filter: brightness(1.15);
+}
+
 /* ---------- Change animations (voice-to-screen sync) ----------
    Board.tsx puts is-<action> on the card that just changed, and lists the changed fields
    in data-changed. Keyframes that leave out the 100% step ease back to the card's own
@@ -922,6 +932,11 @@ button {
   line-height: 1.35;
   color: var(--paper);
   text-shadow: 0 0 24px rgba(255, 170, 70, 0.25);
+}
+/* The word Lumi is saying now: the newest word of a caption that grows with the audio. */
+.word-now {
+  color: #ffe2b0;
+  text-shadow: 0 0 18px rgba(255, 180, 80, 0.7);
 }
 @keyframes caption-in {
   from {

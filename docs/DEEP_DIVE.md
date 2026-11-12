@@ -315,6 +315,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 | Reduced motion | `prefers-reduced-motion` swaps the keyframes for gentler ones | Same information, less movement. |
 | Tool activity | `tool_execution_updated` → `lumi.activity`: the lantern says what Lumi is doing, and a card being searched breathes light (label after 0.4 s, so fast tools don't flash) | A 1–3 s web search is no longer a silent pause. It's the earliest honest signal: the model has decided, the tool hasn't run. |
 | X-ray panel and session receipt | Press X: the last reply's stages, the model that answered, the screen lead (agent and browser), and the prompt as the model reads it. End shows a receipt: replies, median time to voice, changes and undos, median screen lead. | The three deep dives, visible while you use the app instead of only in logs. |
+| Read-along | Lumi's caption highlights its newest word, and a card lights up while Lumi says its title (`spokenTaskIds` on the audio-synced transcript) | When Lumi reads out your day, your eyes follow it on the board. Limit: Aura aligns per sentence, so the word timing is LiveKit's estimate from the speech rate, not exact; a paraphrased title doesn't light up. |
 | Memory shelf | The facts ride in every board push; `changedFacts` lights only the chip that changed | "Remembers you" is visible too, not only spoken, and it shows the stored value, not the model's claim. |
 
 ### Bugs the live run found, all fixed
