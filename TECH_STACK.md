@@ -248,9 +248,11 @@ The worker is a long-running Python process, so serverless platforms are out.
 | Aladhan (Hijri dates, prayer times) | Free, no key, fits users in the Gulf | The user preferred not to |
 | Nager.Date (public holidays) | Free, no key | No Saudi data: `PublicHolidays/2026/SA` returns 204 (checked 2026-11-12) |
 | ntfy.sh (phone reminders) | Free, no key, an action rather than a lookup | Each user must install the app and subscribe to a topic; tasks have no times; public-server delay cap |
-| Google Calendar | Very on-theme for a task board | OAuth consent screen for every user, verification, and token storage: a lot of code to explain for a small project |
+| Google Calendar | Very on-theme for a task board | OAuth consent screen for every user, verification, and token storage: a lot of code to explain for a small project. (A no-OAuth export, a link per task and an `.ics` file, now exists; see below.) |
 
 **Pick: Tavily.** It lets Lumi do the first step of a task, not just store it: "find out what I need to renew my passport" saves a short answer and two source links into that task's notes, and Lumi says one line. Called with `aiohttp`, which `livekit-agents` already installs: `POST https://api.tavily.com/search` with `Authorization: Bearer <TAVILY_API_KEY>`, `search_depth: basic`, `include_answer: basic`. We don't use Tavily's SDK, CLI or MCP server: one HTTP call is easier to explain. A 5 s timeout. Every failure (401 bad key, 429 rate limit, 432 credits used up, timeout, no answer) is a tool error, so Lumi says it couldn't look it up and never invents an answer.
+
+**Calendars without OAuth (2026-11-12).** Google Calendar is still not an API we call, but tasks can reach any calendar today: each dated card links to Google's prefilled "add event" page, and the Connections panel downloads the whole board as an `.ics` file for Apple Calendar, Outlook or Google Calendar. Both are built in the browser (`web/lib/calendar.ts`), so there is no sign-in, no token and no new service. Two-way sync (reading today's events into the prompt) still needs OAuth and is listed as planned.
 
 ## 14. Agent → browser board sync
 

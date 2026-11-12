@@ -55,13 +55,27 @@ npm run dev                               # http://localhost:3000
 | `cd agent && uv run pytest` | Unit tests, no LLM. The DB tests need `TEST_DATABASE_URL` (a Neon `test` branch) and are skipped without it. | Free. Runs on every push. |
 | `cd agent && uv run pytest -m "eval and core"` | The core conversation evals against the real LLM (17). Needs `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL`. | Groq quota. Runs on PRs that change `agent/`. |
 | `cd agent && uv run pytest -m eval` | The full eval suite (35) | ~100K Groq tokens, half the daily cap. On demand only: Actions → CI → Run workflow. |
-| `cd web && npm test` | Board helpers: payload parsing, date lanes, receipts, captions. Stats helpers: the password check, limit levels, percentiles | Free. Runs on every push. |
+| `cd web && npm test` | Board helpers: payload parsing, date lanes, receipts, captions. Stats helpers: the password check, limit levels, percentiles. Calendar export: the Google link and the `.ics` file | Free. Runs on every push. |
 
 ## Deploy
 
 - **Agent:** deploys automatically. CI runs `lk agent deploy` on every push to `main` that changes `agent/`, once the agent tests pass. Manual fallback: `cd agent && lk agent deploy`. Secrets live in LiveKit Cloud, not in the repo: the provider keys, `DATABASE_URL` and **`TAVILY_API_KEY`** (web search, free tier at app.tavily.com, no card). Add a missing one with `lk agent update-secrets --secrets KEY=VALUE`, and check with `lk agent secrets`.
 - **Web:** import the repo in Vercel with root directory `web/`, then set `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. Every push deploys.
 - **Stats page (`/stats`):** free-plan limits and per-stage latency, behind a password. Vercel also needs `STATS_PASSWORD`, `STATS_DATABASE_URL` (the read-only `stats_reader` role on the production database, which can only `SELECT` the two metrics tables), `TAVILY_API_KEY`, and optionally `DEEPGRAM_USAGE_KEY` (a Deepgram key with `usage:read` and `billing:read`) for the credit balance.
+
+## Roadmap
+
+Works today: dated tasks go to a calendar with no sign-in. Each dated card has an "Add to Google Calendar" link, and **Connections** downloads the board as an `.ics` file for Apple Calendar, Outlook or Google Calendar.
+
+Planned (also listed in the app's Connections panel):
+
+- **Google Calendar & Outlook two-way sync:** OAuth sign-in, tokens stored per user, and today's events read into Lumi's prompt.
+- **Arabic:** Deepgram Nova-3 already understands it; the voice (Aura) has no Arabic yet, so it needs another TTS.
+- **Call Lumi from a phone:** LiveKit SIP routes a phone number to the same agent.
+- **A shared family board:** several people in one LiveKit room, each change pushed to everyone.
+- **Reminders at a time:** tasks have dates, not times, yet; then a push notification.
+- **Sign in on any device:** the board is tied to this browser today (an anonymous id).
+- **Recurring tasks:** "every Sunday" as a repeat rule on the task.
 
 ## How the work is split
 

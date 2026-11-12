@@ -1483,3 +1483,215 @@ button {
     animation: none !important;
   }
 }
+
+/* ---------- Connections: the calendar export and the planned integrations ----------
+   One self-contained block for Board.tsx's meta row and card link, and Connections.tsx's dialog. */
+
+/* The date stays left; the count and the Connections button sit together on the right. On a
+   phone they don't fit on one line, so the button wraps below, still on the right (flex-end). */
+.board-meta {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 8px;
+}
+.board-meta .board-date {
+  margin-right: auto;
+}
+.board-meta .board-count {
+  white-space: nowrap;
+}
+
+.connections-open {
+  flex-shrink: 0;
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s;
+}
+.connections-open:hover {
+  background: rgba(255, 238, 214, 0.1);
+  color: var(--paper);
+}
+
+/* The per-card "Add to Google Calendar" link, just before the date chip. */
+.card-calendar {
+  display: inline-flex;
+  margin: -2px 0 -2px auto; /* a 24 px tap target without making the card's top row taller */
+  padding: 5px;
+  border-radius: 6px;
+  color: var(--paper-faint);
+  opacity: 0.55; /* touch screens: always there, but quiet */
+  transition:
+    opacity 0.2s,
+    color 0.2s;
+}
+.card-calendar:hover {
+  color: var(--amber);
+}
+/* With a mouse it shows only while the card is hovered or something in it has focus, so the
+   board stays calm. Keyboard users still reach it, and focusing it makes it visible. */
+@media (hover: hover) {
+  .card-calendar {
+    opacity: 0;
+  }
+  .card:hover .card-calendar,
+  .card:focus-within .card-calendar {
+    opacity: 1;
+  }
+}
+
+/* The panel: a native <dialog>, so the browser draws it in the top layer, above the vignette. */
+.connections {
+  width: min(460px, calc(100vw - 32px));
+  max-height: min(86svh, 720px);
+  padding: 0; /* padding lives on the inner div, so a click on the dialog itself is the backdrop */
+  border: 1px solid rgba(255, 206, 150, 0.17);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, #1b1610, #120f0b);
+  color: var(--paper);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 224, 170, 0.08),
+    0 0 60px -20px rgba(255, 170, 80, 0.35),
+    0 30px 60px -20px rgba(0, 0, 0, 0.9);
+  overflow: auto; /* tall content scrolls inside the panel on a short phone screen */
+}
+.connections::backdrop {
+  background: rgba(6, 5, 4, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.connections-inner {
+  padding: 20px 22px 24px;
+}
+
+.connections-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.connections-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-weight: 500;
+  font-size: 22px;
+}
+
+.connections-close {
+  padding: 4px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+  font-size: 12px;
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+.connections-close:hover {
+  color: var(--paper);
+  background: rgba(255, 238, 214, 0.1);
+}
+
+.connections-section {
+  padding-top: 16px;
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.connections-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper-dim);
+}
+
+.connections-text,
+.connections-note {
+  margin: 0 0 8px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--paper-dim);
+}
+.connections-note {
+  font-size: 12px;
+  color: var(--paper-faint);
+}
+
+.connections-download {
+  margin: 6px 0 8px;
+  padding: 8px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 186, 96, 0.42);
+  background: rgba(255, 181, 71, 0.12);
+  font-size: 13px;
+  font-weight: 600;
+  color: #ffc878;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.connections-download:hover:not(:disabled) {
+  background: rgba(255, 181, 71, 0.22);
+}
+.connections-download:disabled {
+  border-color: var(--line);
+  background: var(--glass);
+  color: var(--paper-faint);
+  cursor: default;
+}
+
+.connections-tag {
+  flex-shrink: 0;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+  vertical-align: 1px;
+}
+.connections-tag.is-ready {
+  border-color: var(--amber-soft);
+  color: var(--amber);
+}
+
+/* Planned items are greyed: readable, but clearly not something to press. */
+.connections-planned {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.connections-planned li {
+  padding: 8px 0;
+  opacity: 0.7;
+}
+.connections-planned li + li {
+  border-top: 1px dashed var(--line);
+}
+.connections-planned .connections-text {
+  margin: 2px 0 0;
+  font-size: 12.5px;
+  color: var(--paper-faint);
+}
+.connections-item {
+  margin: 0;
+  font-size: 14px;
+  color: var(--paper-dim);
+}

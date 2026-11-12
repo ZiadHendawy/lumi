@@ -14,6 +14,7 @@ import {
   groupTasks,
   withGhosts,
 } from '@/lib/board';
+import Connections, { CalendarLink } from './Connections';
 
 type Props = {
   tasks: Task[];
@@ -81,6 +82,7 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
             <span className="prio-flame" aria-hidden="true" />
             {task.done ? 'Done' : PRIORITY_LABELS[task.priority]}
           </span>
+          {!task.done && <CalendarLink task={task} />}
           {task.target_date && (
             <time className="chip" dateTime={task.target_date}>
               {friendlyDate(task.target_date)}
@@ -109,6 +111,7 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, w
             {live ? `${openCount} lit · ${done.length} done` : 'Last seen'}
           </p>
         )}
+        <Connections tasks={tasks} />
       </div>
 
       <Memory facts={facts} changed={factsChanged} />
