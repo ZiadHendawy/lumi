@@ -41,6 +41,7 @@ class SessionState:
     room: rtc.Room | None = None  # None in text-only tests: board pushes are skipped
     timezone: str = "UTC"  # the browser's, sent with lumi.start
     fixed_today: datetime.date | None = None  # tests pin "today" so date evals repeat
+    pushed_at: float | None = None  # when the board last reached the browser
     # Parallel tool calls ("add eggs and bread") each re-read and publish the board. The
     # lock stops an older read from reaching the screen or prompt after a newer one.
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
@@ -91,6 +92,7 @@ async def push_board(state: SessionState, change: dict | None) -> None:
         await state.room.local_participant.send_text(
             json.dumps(board_payload(tasks, change)), topic=BOARD_TOPIC
         )
+        state.pushed_at = time.monotonic()
     except Exception:
         # The change is already saved; a screen that missed one update must not turn
         # it into a reported failure.

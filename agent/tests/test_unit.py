@@ -424,6 +424,7 @@ async def test_board_push_sends_the_contract_payload(db, new_user):
     }
     assert sent[1][1]["change"]["fields"] == ["priority", "target_date"]
     assert sent[1][1]["tasks"][0]["priority"] == "high"
+    assert state.pushed_at is not None
 
 
 @needs_db

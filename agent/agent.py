@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
@@ -10,7 +11,9 @@ from livekit.agents import (
     Agent,
     AgentServer,
     AgentSession,
+    AgentStateChangedEvent,
     ConversationItemAddedEvent,
+    FunctionToolsExecutedEvent,
     JobContext,
     JobProcess,
     TurnHandlingOptions,
@@ -107,6 +110,20 @@ async def entrypoint(ctx: JobContext) -> None:
                 },
             )
 
+    @session.on("function_tools_executed")
+    def log_tool_time(ev: FunctionToolsExecutedEvent) -> None:
+        # From the LLM emitting the call to its result being ready: our code's share
+        # of the turn (SQL, board push, weather HTTP).
+        for call, output in ev.zipped():
+            logger.info(
+                "tool call",
+                extra={
+                    "tool": call.name,
+                    "seconds": round(output.created_at - call.created_at, 3),
+                    "error": output.is_error,
+                },
+            )
+
     @session.on("user_state_changed")
     def end_when_idle(ev: UserStateChangedEvent) -> None:
         if ev.new_state == "away":
@@ -120,6 +137,14 @@ async def entrypoint(ctx: JobContext) -> None:
     )
     ctx.add_shutdown_callback(state.db.close)
     session.userdata = state
+
+    @session.on("agent_state_changed")
+    def log_screen_lead(ev: AgentStateChangedEvent) -> None:
+        # How far the screen is ahead of the voice: board pushed -> Lumi starts talking.
+        if ev.new_state == "speaking" and state.pushed_at is not None:
+            lead = time.monotonic() - state.pushed_at
+            logger.info("board push to speech", extra={"seconds": round(lead, 3)})
+            state.pushed_at = None  # once per turn
 
     # Fill the board on screen now, before the user clicks Start.
     await tools.push_board(state, change=None)
