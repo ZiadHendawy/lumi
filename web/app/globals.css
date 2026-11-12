@@ -1953,15 +1953,79 @@ button {
   }
 }
 
-/* ---------- Night strip and source chips ----------
+/* ---------- Calendar (night strip, month) and source chips ----------
    The strip is the 14-day calendar the model reads, one cell per night, with a dot per open
-   task lit like its card. Source chips are the web-search links in a card's notes. */
+   task lit like its card. "Month" swaps it for the whole month. Every day is a button that
+   filters the board. Source chips are the web-search links in a card's notes. */
 
 .nights {
+  margin: -14px 0 32px;
+}
+
+/* The label, the overdue count and the toggle; wraps on a narrow phone instead of overflowing. */
+.nights-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  margin-bottom: 8px;
+}
+.nights-title {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--paper-faint);
+}
+.month-nav {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: -14px 0 32px;
+  gap: 4px;
+}
+.month-nav .nights-title {
+  min-width: 112px;
+  text-align: center;
+}
+.month-arrow {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  font-size: 18px;
+  line-height: 1;
+  color: var(--paper-dim);
+  cursor: pointer;
+}
+.month-arrow:hover {
+  background: var(--glass);
+  color: var(--paper);
+}
+
+/* Small pill buttons: the month toggle and the filter's "Show all". */
+.nights-toggle,
+.day-filter-clear {
+  padding: 3px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--paper-dim);
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    color 0.2s,
+    border-color 0.2s;
+}
+.nights-toggle {
+  margin-left: auto;
+}
+.nights-toggle:hover,
+.day-filter-clear:hover {
+  border-color: var(--amber-soft);
+  color: var(--amber);
 }
 
 .nights-overdue {
@@ -1992,16 +2056,59 @@ button {
   scrollbar-width: none; /* the cut-off cell at the edge already says "scroll" */
 }
 
+/* The whole month: seven equal columns that shrink to fit, so a 360 px phone never scrolls.
+   Capped on a wide screen so the grid stays a small calendar, not a wall. */
+.is-month .nights-head,
+.month-weekdays,
+.month-grid {
+  max-width: 448px;
+}
+.month-weekdays,
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+}
+.month-weekdays {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--paper-faint);
+}
+.month-grid {
+  list-style: none;
+}
+.month-grid .night {
+  padding: 4px 0 5px;
+}
+
 .night {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1px;
+  width: 100%;
+  height: 100%;
   padding: 6px 0 8px;
   border-radius: 10px;
   border: 1px solid transparent;
+  background: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
   scroll-snap-align: start;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
+}
+.night:hover {
+  background: var(--glass);
 }
 .night.is-today {
   border-color: var(--line);
@@ -2009,6 +2116,16 @@ button {
 }
 .night.is-weekend {
   opacity: 0.6;
+}
+/* Days before the 1st and after the last, there only to fill the weeks. */
+.night.is-outside {
+  opacity: 0.3;
+}
+/* The day the board is filtered to. */
+.night.is-selected {
+  border-color: rgba(255, 181, 71, 0.75);
+  background: rgba(255, 181, 71, 0.1);
+  opacity: 1;
 }
 
 .night-weekday {
@@ -2058,6 +2175,32 @@ button {
 .night-dot.prio-low {
   border: 1px solid var(--cool);
   opacity: 0.6;
+}
+/* An open task on a day that has passed is overdue: drawn in the overdue lane's ember. */
+.night.is-past .night-dot {
+  border: 0;
+  background: var(--ember);
+  box-shadow: 0 0 5px rgba(255, 116, 66, 0.6);
+  opacity: 1;
+}
+
+/* Above the lanes while the board shows one day. */
+.day-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+  margin: -16px 0 28px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--glass);
+}
+.day-filter-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--paper-dim);
 }
 
 /* The task just landed on this night (added, or its date moved): the dot flares, then settles. */

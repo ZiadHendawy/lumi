@@ -9,15 +9,15 @@ import {
   type Task,
   GROUP_LABELS,
   cardChange,
-  dotIgnites,
+  dayFilterText,
   friendlyDate,
   groupTasks,
-  nightLabel,
-  nightStrip,
   splitLinks,
+  tasksOnDay,
   todayAllDone,
   withGhosts,
 } from '@/lib/board';
+import Calendar from './Calendar';
 import Connections, { CalendarLink } from './Connections';
 import Memory, { type MemoryEdit } from './Memory';
 
@@ -42,11 +42,13 @@ const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 export default function Board(props: Props) {
   const { tasks, facts, factsChanged, recent, seq, live, working, spoken, onGhostGone, onReceiptDone } = props;
   const [showDone, setShowDone] = useState(false);
+  const [day, setDay] = useState<string | null>(null); // a day picked on the calendar
   const now = new Date();
 
   const visible = withGhosts(tasks, recent);
-  const lanes = groupTasks(visible, now);
-  const done = visible.filter((t) => t.done);
+  const shown = day ? tasksOnDay(visible, day) : visible;
+  const lanes = groupTasks(shown, now);
+  const done = shown.filter((t) => t.done);
   // The change carried by the newest board, if it had one.
   const change = recent.find((r) => r.seq === seq)?.change;
   const changedTask = change ? visible.find((t) => t.id === change.task_id) : undefined;
@@ -55,6 +57,7 @@ export default function Board(props: Props) {
   // happen while Lumi is still saying it.
   useEffect(() => {
     if (!change) return;
+    setDay(null); // a day filter could hide the card Lumi is changing while it says so
     if (changedTask?.done) setShowDone(true); // otherwise "mark it done" would vanish into a closed list
     // Wait one frame so a just-opened Done list is on screen before scrolling to it.
     requestAnimationFrame(() => {
@@ -126,13 +129,31 @@ export default function Board(props: Props) {
 
       <Memory facts={facts} changed={factsChanged} onEdit={props.onEditMemory} onShowPrompt={props.onShowPrompt} />
 
-      {!isEmpty && <NightStrip tasks={tasks} recent={recent} now={now} />}
+      {!isEmpty && (
+        <Calendar
+          tasks={tasks}
+          recent={recent}
+          now={now}
+          selected={day}
+          onSelect={(date) => {
+            setDay(date);
+            if (date) setShowDone(true); // the day's finished tasks are part of its answer
+          }}
+        />
+      )}
 
       {/* A small reward for finishing the day. It glows once when a "done" put the last one out. */}
       {todayAllDone(tasks, now) && (
         <p className={change?.action === 'updated' && change.fields.includes('done') ? 'all-out is-new' : 'all-out'}>
           All of today’s lanterns are out. Well done.
         </p>
+      )}
+
+      {day && !isEmpty && (
+        <div className="day-filter">
+          <p className="day-filter-text">{dayFilterText(day, shown.length, now)}</p>
+          <button className="day-filter-clear" onClick={() => setDay(null)}>Show all</button>
+        </div>
       )}
 
       {isEmpty ? (
@@ -194,47 +215,6 @@ export default function Board(props: Props) {
           <p key={`${factsChanged.seq}-${line}`}>{line}</p>
         ))}
       </div>
-    </section>
-  );
-}
-
-// The night strip: the same 14-day calendar the model reads in its prompt (prompt.build_instructions),
-// drawn so the user can see the days Lumi resolves "next Friday" against. One dot per open task,
-// as bright as its priority.
-function NightStrip({ tasks, recent, now }: { tasks: Task[]; recent: RecentChange[]; now: Date }) {
-  const { nights, overdue } = nightStrip(tasks, now);
-  return (
-    <section className="nights" aria-label="The next 14 days">
-      {overdue > 0 && <p className="nights-overdue">{overdue} overdue</p>}
-      {/* Only this row scrolls sideways on a phone, never the page. */}
-      <ol className="nights-row">
-        {nights.map((night) => {
-          const label = nightLabel(night);
-          const classes = ['night'];
-          if (night.isToday) classes.push('is-today');
-          if (night.isWeekend) classes.push('is-weekend');
-          return (
-            <li key={night.date} className={classes.join(' ')} title={label}>
-              <span className="night-weekday" aria-hidden="true">{night.weekday}</span>
-              <span className="night-day" aria-hidden="true">{night.day}</span>
-              <span className="night-dots" aria-hidden="true">
-                {night.tasks.map((task) => {
-                  const changed = cardChange(recent, task.id);
-                  const ignites = dotIgnites(changed);
-                  return (
-                    <span
-                      // A fresh key restarts the ignite animation, like a changed card.
-                      key={ignites ? `${task.id}-${changed!.seq}` : task.id}
-                      className={`night-dot prio-${task.priority}${ignites ? ' is-igniting' : ''}`}
-                    />
-                  );
-                })}
-              </span>
-              <span className="sr-only">{label}</span>
-            </li>
-          );
-        })}
-      </ol>
     </section>
   );
 }

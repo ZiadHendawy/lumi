@@ -179,7 +179,7 @@ Relative dates, 9 phrasings × 2 runs, with "today" fixed at Friday 2026-11-27 (
 | No calendar (`CALENDAR_DAYS=0`) | 15/18 (83%) | "on Wednesday" became Thu Dec 3 in both runs (one day late). Once it asked to confirm "the 3rd" instead of adding the task. |
 | 14-day calendar | **18/18** | Nothing. It costs about 110 prompt tokens per request. |
 
-The same 14 days are now drawn on the board as the **night strip** (`nightStrip` in `web/lib/board.ts`): one cell per day with a dot per open task, so after "move it to next Friday" you can see which Friday the model picked.
+The same 14 days are now drawn on the board as the **night strip** (`nightStrip` in `web/lib/board.ts`): one cell per day with a dot per open task, so after "move it to next Friday" you can see which Friday the model picked. Clicking a day filters the board to it, and "Month" opens the whole month.
 
 ### Measured: ambiguous references
 
@@ -321,7 +321,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 | Read-along | Lumi's caption highlights its newest word, and a card lights up while Lumi says its title (`spokenTaskIds` on the audio-synced transcript) | When Lumi reads out your day, your eyes follow it on the board. Limit: Aura aligns per sentence, so the word timing is LiveKit's estimate from the speech rate, not exact; a paraphrased title doesn't light up. |
 | Memory shelf | The facts ride in every board push; `changedFacts` lights only the chip that changed | "Remembers you" is visible too, not only spoken, and it shows the stored value, not the model's claim. |
 | Source chips | `splitLinks` turns each http(s) link in a card's notes into a chip naming the site (new tab, full URL on hover); everything else stays plain text | Lumi says "according to ikea.com"; the card shows the same site, one tap from the page. Notes come from the web, so nothing in them is rendered as HTML. |
-| Night strip | The 14-day calendar from the prompt, one dot per open task; a dot flares when its task lands on that day | A date change is visible as a dot moving, on the same days the model looked up. |
+| Night strip | The 14-day calendar from the prompt, one dot per open task; a dot flares when its task lands on that day. Click a day to see only its tasks, or open the whole month | A date change is visible as a dot moving, on the same days the model looked up. |
 
 ### Bugs the live run found, all fixed
 

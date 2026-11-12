@@ -28,6 +28,9 @@ import {
   dotIgnites,
   nightLabel,
   nightStrip,
+  monthGrid,
+  tasksOnDay,
+  dayFilterText,
   splitLinks,
 } from './board.ts';
 
@@ -422,6 +425,66 @@ test('dotIgnites for a new task or a moved date, not for other edits', () => {
   assert.equal(dotIgnites(recent(changeOf('updated', 1, 'Task 1', ['target_date', 'priority']))), true);
   assert.equal(dotIgnites(recent(changeOf('updated', 1, 'Task 1', ['priority']))), false);
   assert.equal(dotIgnites(recent(changeOf('deleted', 1, 'Task 1'))), false);
+});
+
+test('monthGrid lays a month out in whole weeks, Monday first, with the edge days marked', () => {
+  const weeks = monthGrid([], 2026, 10, NOW); // November 2026 starts on a Sunday
+  assert.equal(weeks.length, 6);
+  assert.ok(weeks.every((week) => week.length === 7));
+  assert.deepEqual(weeks[0].map((d) => d.weekday), ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+  assert.equal(weeks[0][0].date, '2026-10-26');
+  assert.equal(weeks[0][6].date, '2026-11-01');
+  assert.equal(weeks[5][6].date, '2026-12-06');
+  const days = weeks.flat();
+  assert.equal(days.filter((d) => d.inMonth).length, 30);
+  assert.deepEqual(days.filter((d) => d.isToday).map((d) => d.date), ['2026-11-12']);
+  assert.equal(days.find((d) => d.date === '2026-11-11')!.isPast, true);
+  assert.equal(days.find((d) => d.date === '2026-11-12')!.isPast, false);
+});
+
+test('monthGrid needs only as many weeks as the month covers, across a year end', () => {
+  assert.equal(monthGrid([], 2027, 1, NOW).length, 4); // February 2027: Monday 1st to Sunday 28th
+  const december = monthGrid([], 2026, 11, NOW);
+  assert.equal(december.length, 5);
+  assert.equal(december[4][6].date, '2027-01-03');
+  assert.equal(december[4][6].inMonth, false);
+});
+
+test('monthGrid puts open tasks on their day, overdue ones included, brightest first', () => {
+  const days = monthGrid(
+    [
+      task(1, { priority: 'low', target_date: '2026-11-20' }),
+      task(2, { priority: 'high', target_date: '2026-11-20' }),
+      task(3, { target_date: '2026-11-20', done: true }), // done: no dot
+      task(4, { target_date: '2026-11-03' }), // overdue: still on its day
+      task(5, { target_date: null }),
+    ],
+    2026,
+    10,
+    NOW,
+  ).flat();
+  assert.deepEqual(days.find((d) => d.date === '2026-11-20')!.tasks.map((t) => t.id), [2, 1]);
+  assert.deepEqual(days.find((d) => d.date === '2026-11-03')!.tasks.map((t) => t.id), [4]);
+  assert.equal(days.reduce((n, d) => n + d.tasks.length, 0), 3);
+});
+
+test('tasksOnDay keeps every task dated that day, open and done', () => {
+  const tasks = [
+    task(1, { target_date: '2026-11-20' }),
+    task(2, { target_date: '2026-11-20', done: true }),
+    task(3, { target_date: '2026-11-21' }),
+    task(4, { target_date: null }),
+  ];
+  assert.deepEqual(tasksOnDay(tasks, '2026-11-20').map((t) => t.id), [1, 2]);
+  assert.deepEqual(tasksOnDay(tasks, '2026-11-22'), []);
+});
+
+test('dayFilterText counts the day\'s tasks, or suggests what to say on a day still to come', () => {
+  assert.equal(dayFilterText('2026-11-20', 2, NOW), 'Showing Fri 20 Nov · 2 tasks');
+  assert.equal(dayFilterText('2026-11-20', 1, NOW), 'Showing Fri 20 Nov · 1 task');
+  assert.equal(dayFilterText('2026-11-20', 0, NOW), 'Nothing on Fri 20 Nov. Try saying “add … on Friday”.');
+  assert.equal(dayFilterText('2026-11-12', 0, NOW), 'Nothing on Thu 12 Nov. Try saying “add … on Thursday”.');
+  assert.equal(dayFilterText('2026-11-10', 0, NOW), 'Nothing on Tue 10 Nov.');
 });
 
 test('splitLinks leaves plain text as one piece', () => {

@@ -358,27 +358,76 @@ function isoDay(day: Date): string {
   return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 }
 
+// One calendar day: its open tasks (brightest first) and how to draw it. Shared by the strip
+// and the month grid, so a day looks and reads the same in both.
+function nightOf(day: Date, open: Task[], now: Date): Night {
+  const date = isoDay(day);
+  const weekdayNumber = day.getDay();
+  return {
+    date,
+    weekday: weekdayFormat.format(day),
+    day: day.getDate(),
+    isToday: date === isoDay(now),
+    // Saturday and Sunday. (Saudi Arabia rests Friday and Saturday; the browser's own weekend
+    // needs Intl.Locale's getWeekInfo, which not every browser has, so it isn't guessed.)
+    isWeekend: weekdayNumber === 0 || weekdayNumber === 6,
+    tasks: open.filter((t) => t.target_date === date),
+  };
+}
+
+// Open dated tasks in lane order, the dots a calendar draws.
+function openDated(tasks: Task[]): Task[] {
+  return tasks.filter((t) => !t.done && t.target_date).sort(compareTasks);
+}
+
 // Today and the next days - 1. The prompt names today and then lists the 14 days after it;
 // the strip starts at today instead, because today's tasks are the ones the user looks for first.
 export function nightStrip(tasks: Task[], now: Date, days = 14): { nights: Night[]; overdue: number } {
-  const dated = tasks.filter((t) => !t.done && t.target_date).sort(compareTasks);
-  const nights = Array.from({ length: days }, (_, n) => {
-    // The Date constructor rolls day 32 into the next month (and year), in local time.
-    const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + n);
-    const weekdayNumber = day.getDay();
-    return {
-      date: isoDay(day),
-      weekday: weekdayFormat.format(day),
-      day: day.getDate(),
-      isToday: n === 0,
-      // Saturday and Sunday. (Saudi Arabia rests Friday and Saturday; the browser's own weekend
-      // needs Intl.Locale's getWeekInfo, which not every browser has, so it isn't guessed.)
-      isWeekend: weekdayNumber === 0 || weekdayNumber === 6,
-      tasks: dated.filter((t) => daysFromToday(t.target_date!, now) === n),
-    };
-  });
+  const dated = openDated(tasks);
+  // The Date constructor rolls day 32 into the next month (and year), in local time.
+  const nights = Array.from({ length: days }, (_, n) =>
+    nightOf(new Date(now.getFullYear(), now.getMonth(), now.getDate() + n), dated, now),
+  );
   const overdue = dated.filter((t) => daysFromToday(t.target_date!, now) < 0).length;
   return { nights, overdue };
+}
+
+// A day in the month grid also knows if it belongs to the month shown (the days before the 1st
+// and after the last are drawn dimmed, to fill the weeks) and if it has passed, so its open
+// tasks are drawn as overdue.
+export type MonthDay = Night & { inMonth: boolean; isPast: boolean };
+
+// The month as whole weeks, Monday first (en-GB), 4 to 6 rows. `month` is 0-based like Date's.
+export function monthGrid(tasks: Task[], year: number, month: number, now: Date): MonthDay[][] {
+  const dated = openDated(tasks);
+  const first = new Date(year, month, 1);
+  const lead = (first.getDay() + 6) % 7; // days from the Monday before the 1st (Sunday is 0)
+  const daysInMonth = new Date(year, month + 1, 0).getDate(); // day 0 of next month = last day
+  const weeks = Math.ceil((lead + daysInMonth) / 7);
+  const today = isoDay(now);
+  return Array.from({ length: weeks }, (_, w) =>
+    Array.from({ length: 7 }, (_, d) => {
+      const day = new Date(year, month, 1 - lead + w * 7 + d);
+      const night = nightOf(day, dated, now);
+      // ISO days compare correctly as plain strings.
+      return { ...night, inMonth: day.getMonth() === month, isPast: night.date < today };
+    }),
+  );
+}
+
+// Every task dated on a day, open and done, for the board's day filter.
+export function tasksOnDay(tasks: Task[], date: string): Task[] {
+  return tasks.filter((t) => t.target_date === date);
+}
+
+// The line above a filtered board. An empty day suggests what to say, but only a day still to
+// come: nobody adds a task to last Tuesday.
+export function dayFilterText(date: string, count: number, now: Date): string {
+  if (count > 0) return `Showing ${friendlyDate(date)} · ${count} ${count === 1 ? 'task' : 'tasks'}`;
+  const nothing = `Nothing on ${friendlyDate(date)}.`;
+  if (daysFromToday(date, now) < 0) return nothing;
+  const weekday = localDay(date).toLocaleDateString('en-GB', { weekday: 'long' });
+  return `${nothing} Try saying “add … on ${weekday}”.`;
 }
 
 // What a night's tooltip and screen reader say: "Fri 14 Nov: Call the bank (high), Buy milk (low)".
