@@ -23,7 +23,7 @@ Run on the **live URL** at the end of each milestone, on desktop Chrome and one 
 - [ ] "Add eggs and bread." Two cards appear.
 - [ ] Refresh the page: the last board shows at once (marked as last seen), then the live board replaces it.
 - [ ] Memory: "My favorite color is blue." End, refresh, start: "What's my favorite color?" The answer is blue.
-- [ ] Weather: "Will it rain in Riyadh on Saturday?" A real forecast comes back. "What's the weather in Atlantis?" gets a graceful "couldn't find it".
+- [ ] Web search: "What time does IKEA Riyadh close tonight?" A short answer that names its source site. "Add renew passport, and find out what documents I need" puts an answer and source links in the card's notes, and Lumi says only one line.
 
 ## M2/M3: deep dives and polish
 - [ ] Ambiguous: with two "call" tasks, "delete the call one" makes Lumi ask which one.

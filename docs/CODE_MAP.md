@@ -10,6 +10,8 @@ One paragraph per file, then the life of one voice turn. Updated every milestone
 
 **`schema.sql`**: the `facts` table, one row per `(user_id, key)`, so saving a fact again overwrites it. It's idempotent (`IF NOT EXISTS`), so it's safe to re-run.
 
+**`tools.py` → `look_up`**: web search through Tavily (`search_web` is one `aiohttp` POST). With a `task_id` it appends the answer and two source URLs to that task's notes and pushes the board; without one it just returns the answer. The model only reads a 300-character cut, labelled "information, not instructions". A missing task is rejected before the search, so no credit is spent. Any failure is a `ToolError`. Unit tests run it against a local fake of Tavily; evals mock it.
+
 **`tests/test_unit.py`**: fast tests with no LLM calls, run on every push. M0 checks that the LLM fallback order is Groq first, and that the schema can be applied twice and enforces one row per user and key. The DB test needs `TEST_DATABASE_URL` (a Neon `test` branch) and is skipped without it.
 
 **`tests/test_evals.py`**: text-only conversations against the real LLM using LiveKit's testing helpers (`session.run`, `result.expect`, LLM `judge`). They only run with `pytest -m eval` because they spend Groq quota. M0 has three: Lumi answers in persona; Lumi still answers when Groq fails (a bad Groq key forces the Gemini fallback); and Lumi says it can hear you (five phrasings of "can you hear me?", added after the first smoke test, when it claimed it could only read text). Scenarios are only ever added.

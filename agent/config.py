@@ -23,12 +23,16 @@ MAX_HISTORY_ITEMS = 20
 # without paying for long notes on every request.
 NOTES_PREVIEW_CHARS = 60
 
-# Open-Meteo: free, no API key. Its forecast covers today plus 15 days.
-GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
-FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
-FORECAST_DAYS_AHEAD = 15
+# Tavily web search. Free tier: 1,000 credits a month; a basic search costs 1.
+SEARCH_URL = "https://api.tavily.com/search"
 # The user is waiting in silence while this runs; better a quick "couldn't get it".
-WEATHER_TIMEOUT_SECONDS = 3
+# A basic search with an answer usually takes 1-3 s.
+SEARCH_TIMEOUT_SECONDS = 5
+# What the model reads back is cut short: it is re-sent on every later request, and
+# the 8K tokens/min free tier counts it. The board's notes keep the longer version.
+SEARCH_SPOKEN_CHARS = 300
+SEARCH_NOTES_CHARS = 600
+SEARCH_SOURCES = 2  # source links saved with each answer, so it can be checked
 
 # Checked 2026-11-11: llama-3.3-70b is no longer offered. gpt-oss-120b made correct tool
 # calls in testing.

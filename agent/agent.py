@@ -46,7 +46,7 @@ class Lumi(Agent):
                 tools.restore_task,
                 tools.remember_fact,
                 tools.forget_fact,
-                tools.get_weather,
+                tools.look_up,
             ],
         )
 
@@ -149,7 +149,7 @@ async def entrypoint(ctx: JobContext) -> None:
     @session.on("function_tools_executed")
     def log_tool_time(ev: FunctionToolsExecutedEvent) -> None:
         # From the LLM emitting the call to its result being ready: our code's share
-        # of the turn (SQL, board push, weather HTTP).
+        # of the turn (SQL, board push, web search).
         for call, output in ev.zipped():
             logger.info(
                 "tool call",

@@ -208,12 +208,14 @@ The worker is a long-running Python process, so serverless platforms are out.
 
 | Option | Pros | Cons |
 |---|---|---|
-| ✅ **Open-Meteo (forecast + geocoding)** | Free, **no key and no account**, so nothing can expire before someone opens the demo. 16-day daily forecast, global. Two plain GET requests. | Forecast only goes about 16 days out |
+| ✅ **Tavily web search** | Built for LLM agents: one POST returns a short written answer plus source URLs, so the model reads a few sentences, not web pages. Free "Researcher" plan: 1,000 credits a month, no credit card; a basic search costs 1 credit. | Needs a key (our own, kept in LiveKit Cloud secrets; visitors never see it). Adds about 1–3 s to a turn. Web text is untrusted. |
+| Open-Meteo weather (used until 2026-11-12) | Free, no key, no account | A side question that never changes the board, and a demo cliché |
+| Aladhan (Hijri dates, prayer times) | Free, no key, fits users in the Gulf | The user preferred not to |
+| Nager.Date (public holidays) | Free, no key | No Saudi data: `PublicHolidays/2026/SA` returns 204 (checked 2026-11-12) |
+| ntfy.sh (phone reminders) | Free, no key, an action rather than a lookup | Each user must install the app and subscribe to a topic; tasks have no times; public-server delay cap |
 | Google Calendar | Very on-theme for a task board | OAuth consent screen for every user, verification, and token storage: a lot of code to explain for a small project |
-| Nager.Date (public holidays) | Free, no key. Could warn when a target date falls on a holiday. | Coverage of Gulf countries is uncertain. Fewer daily-use questions. |
-| OpenWeatherMap | Popular | Needs a key and signup. Free tier has rate limits. |
 
-**Pick: Open-Meteo.** Tasks have target dates, and many real tasks depend on the weather (errands, travel, anything outdoors). So "will it rain on Saturday?" is a question you naturally ask while planning the week with Lumi. The `home_city` fact means Lumi only asks for your city once. Called with `aiohttp`, which `livekit-agents` already installs, with a short timeout. Any failure is reported as a tool error, so Lumi says it couldn't check and never invents a forecast.
+**Pick: Tavily.** It lets Lumi do the first step of a task, not just store it: "find out what I need to renew my passport" saves a short answer and two source links into that task's notes, and Lumi says one line. Called with `aiohttp`, which `livekit-agents` already installs: `POST https://api.tavily.com/search` with `Authorization: Bearer <TAVILY_API_KEY>`, `search_depth: basic`, `include_answer: basic`. We don't use Tavily's SDK, CLI or MCP server: one HTTP call is easier to explain. A 5 s timeout. Every failure (401 bad key, 429 rate limit, 432 credits used up, timeout, no answer) is a tool error, so Lumi says it couldn't look it up and never invents an answer.
 
 ## 14. Agent → browser board sync
 
