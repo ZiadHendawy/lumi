@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Lumi's lantern on the night tile. Same drawing as components/LanternMark.tsx
+       (keep the two in step); this copy is a static file because Next serves app/icon.svg as is.
+       Strokes are 3.5 of 64 so the outline is still a full pixel at 16×16. -->
+  <defs>
+    <radialGradient id="glow">
+      <stop offset="0" stop-color="#ffb547" stop-opacity="0.55"/>
+      <stop offset="1" stop-color="#ffb547" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="flame" cy="0.62" r="0.6">
+      <stop offset="0" stop-color="#fffbea"/>
+      <stop offset="0.25" stop-color="#ffe39a"/>
+      <stop offset="0.55" stop-color="#ffb547"/>
+      <stop offset="1" stop-color="#e8742a"/>
+    </radialGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="#0c0a08"/>
+  <circle cx="32" cy="40" r="18" fill="url(#glow)"/>
+  <circle cx="32" cy="12.5" r="5" fill="none" stroke="#ffb547" stroke-width="3.5"/>
+  <rect x="22" y="17.5" width="20" height="5" rx="2.5" fill="#ffb547"/>
+  <rect x="18" y="23.5" width="28" height="30" rx="9" fill="#ffb547" fill-opacity="0.08" stroke="#ffb547" stroke-width="3.5"/>
+  <rect x="22" y="53.5" width="20" height="4.5" rx="2.25" fill="#ffb547"/>
+  <!-- The teardrop flame: a circle whose top is drawn out to a point. -->
+  <path d="M32 29.9 L37.3 35.2 A7.5 7.5 0 1 1 26.7 35.2 Z" fill="url(#flame)"/>
+</svg>

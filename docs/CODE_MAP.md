@@ -50,11 +50,21 @@ One paragraph per file, then the contract between the agent and the browser, the
 
 **`lib/userId.ts`**: `getUserId` creates and remembers a random UUID in `localStorage`. It is the user's identity for memory, with no login.
 
-**`app/page.tsx`**: the page: the masthead and `VoiceSession`, loaded client-only, because `localStorage` doesn't exist during server rendering.
+**`app/page.tsx`**: the page: the masthead (the `LanternMark` before the "Lumi" wordmark, `aria-hidden` so the heading still reads as "Lumi") and `VoiceSession`, loaded client-only, because `localStorage` doesn't exist during server rendering.
+
+**`components/LanternMark.tsx`**: Lumi's lantern as an inline SVG: a handle ring, a cap, the rounded glass, a base and a teardrop flame (a circle drawn out to a point) over a radial glow, in the board's amber. One drawing shared by the masthead, the home-screen icon and the link preview, so they always match. Its `viewBox` crops `icon.svg`'s 64×64 grid, so the coordinates are the same in both.
+
+**`app/icon.svg`**: the browser-tab icon, hand-written: the same lantern on a near-black rounded tile. It's a static copy of `LanternMark` because Next serves `app/icon.svg` as a file and adds the `<link rel="icon">` itself. Strokes are 3.5 of 64 units so the glass and flame still read at 16×16.
+
+**`app/apple-icon.tsx`**: the 180×180 home-screen icon, drawn at build time by `ImageResponse` from `next/og` (no dependency). Full-bleed night background instead of the tile, because iOS rounds the corners itself. Served at `/apple-icon`.
+
+**`app/manifest.ts`**: the web app manifest (`/manifest.webmanifest`): name, description, standalone display, night background and theme colour, and the two icons above. It lets a user add Lumi to a phone's home screen and open it without browser chrome.
+
+**`app/opengraph-image.tsx`**: the 1200×630 link-preview card (`/opengraph-image`), also built with `ImageResponse`: the night background with a warm glow rising from the bottom, the lantern, the wordmark and the tagline, in the default font so the build fetches nothing. No `metadataBase`: on Vercel, Next makes the `og:image` URL absolute from the deployment's own domain (`VERCEL_PROJECT_PRODUCTION_URL`, or the preview URL); only a local build falls back to `localhost` and warns.
 
 **`app/layout.tsx`**: the HTML shell. Loads the two fonts (Fraunces, Inter) with `next/font`, which serves them from our own domain, and sets the dark theme colour for mobile browsers.
 
-**`app/globals.css`**: "the lantern board". Dark only. Priority is how brightly a card glows, done tasks are put out. One keyframe per kind of change (`ignite` for a new or restored card, `ember-away` for a delete, `pop` for priority, `chip-slide` for a date, `shimmer` for title and notes, `extinguish` for done). Notes are never clamped: a card grows to show all of them, with line breaks kept. The memory shelf's chips light up with `fact-lit`. Also the toasts, the lantern states, a 640 px mobile layout, and gentler keyframes under `prefers-reduced-motion`. Animations only touch transform, opacity, box-shadow and filter, so they stay smooth.
+**`app/globals.css`**: "the lantern board". Dark only. Priority is how brightly a card glows, done tasks are put out. One keyframe per kind of change (`ignite` for a new or restored card, `ember-away` for a delete, `pop` for priority, `chip-slide` for a date, `shimmer` for title and notes, `extinguish` for done). Notes are never clamped: a card grows to show all of them, with line breaks kept. The memory shelf's chips light up with `fact-lit`. Also the toasts, the lantern states, the masthead's lantern mark (`.wordmark-lantern`: sized in `em` so it shrinks with the wordmark, a soft `drop-shadow` glow and a slow `mark-flicker` on its flame), a 640 px mobile layout, and gentler keyframes under `prefers-reduced-motion`. Animations only touch transform, opacity, box-shadow and filter, so they stay smooth.
 
 ## CI/CD (`.github/workflows/ci.yml`)
 

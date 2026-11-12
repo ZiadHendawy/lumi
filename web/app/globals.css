@@ -110,6 +110,9 @@ button {
 }
 
 .wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.2em;
   margin: 0;
   font-family: var(--font-display);
   font-variation-settings: 'SOFT' 100, 'opsz' 144;
@@ -121,6 +124,33 @@ button {
   text-shadow:
     0 0 28px rgba(255, 170, 70, 0.35),
     0 0 2px rgba(255, 200, 130, 0.4);
+}
+
+/* The lantern before the wordmark, sized in em so it shrinks with the wordmark on a phone. */
+.wordmark-lantern {
+  flex: none;
+  height: 0.95em;
+  width: auto;
+  filter: drop-shadow(0 0 10px rgba(255, 170, 70, 0.45));
+}
+/* A slow, small flicker so the mark looks lit, not printed. */
+.wordmark-lantern .mark-flame {
+  animation: mark-flicker 4.5s ease-in-out infinite;
+}
+@keyframes mark-flicker {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.8;
+  }
+  55% {
+    opacity: 0.95;
+  }
+  70% {
+    opacity: 0.85;
+  }
 }
 
 .tagline {
@@ -1236,6 +1266,7 @@ button {
     animation: none !important;
   }
   .lantern-flame,
+  .wordmark-lantern .mark-flame,
   .caption,
   .empty-phrases li {
     animation: none !important;
