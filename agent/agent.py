@@ -40,6 +40,11 @@ class Lumi(Agent):
     def __init__(self) -> None:
         super().__init__(instructions=INSTRUCTIONS)
 
+    def llm_node(self, chat_ctx, tools, model_settings):
+        # Runs before every LLM request; see config.sign_tool_calls_for_gemini for why.
+        config.sign_tool_calls_for_gemini(chat_ctx)
+        return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
+
 
 def prewarm(proc: JobProcess) -> None:
     # Loading the VAD model takes ~1 s; do it once per worker process, not per call.

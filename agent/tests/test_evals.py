@@ -8,7 +8,6 @@ import os
 
 import pytest
 from livekit.agents import AgentSession
-from livekit.plugins import groq
 
 import config
 from agent import Lumi
@@ -20,7 +19,9 @@ pytestmark = [
 
 
 def judge():
-    return groq.LLM(model=config.GROQ_MODEL, temperature=0)
+    # Same fallback chain as Lumi: on the free tier a rate-limited judge would
+    # otherwise fail evals whose reply was fine.
+    return config.build_llm()
 
 
 # --- M0 ---------------------------------------------------------------------
