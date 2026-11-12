@@ -3,11 +3,14 @@
 import { useEffect, useState } from 'react';
 import { TokenSource } from 'livekit-client';
 import { RoomAudioRenderer, SessionProvider, useAgent, useSession } from '@livekit/components-react';
+import { type Change, type Task, loadCachedTasks, parseBoard, saveCachedTasks } from '@/lib/board';
 import { getUserId } from '@/lib/userId';
 
 const tokenSource = TokenSource.endpoint('/api/token');
+const BOARD_TOPIC = 'lumi.board'; // must match the topic the agent sends on
 
-// Placeholder UI for M0: proves the loop works. The real look is decided at the end of M0.
+type BoardState = { tasks: Task[]; change: Change | null; seq: number; ghost: Task | null; live: boolean };
+
 export default function VoiceSession() {
   const [userId] = useState(getUserId);
   const session = useSession(tokenSource, {
@@ -18,6 +21,34 @@ export default function VoiceSession() {
   });
   const agent = useAgent(session);
   const [started, setStarted] = useState(false);
+
+  // Start from the board cached on the last visit, so it's there during the agent's cold start.
+  const [board, setBoard] = useState<BoardState>(() => ({
+    tasks: loadCachedTasks(userId) ?? [],
+    change: null,
+    seq: 0,
+    ghost: null,
+    live: false,
+  }));
+
+  // The agent sends the whole board as one JSON text stream after every change (and once when
+  // we join). Registered before connecting so the first board can't arrive with no listener.
+  // The handler stays on the Room object, so it survives an End + talk-again.
+  useEffect(() => {
+    const room = session.room;
+    room.registerTextStreamHandler(BOARD_TOPIC, async (reader) => {
+      const payload = parseBoard(await reader.readAll());
+      if (!payload) return;
+      saveCachedTasks(userId, payload.tasks);
+      setBoard((prev) => {
+        const change = payload.change;
+        // A deleted task is no longer in `tasks`; keep its last copy so it can animate out.
+        const ghost = change?.action === 'deleted' ? (prev.tasks.find((t) => t.id === change.task_id) ?? null) : null;
+        return { tasks: payload.tasks, change, ghost, seq: prev.seq + 1, live: true };
+      });
+    });
+    return () => room.unregisterTextStreamHandler(BOARD_TOPIC);
+  }, [session.room, userId]);
 
   // Connect (and dispatch the agent) on page load, so the cold start overlaps with the
   // user reading the page. The mic stays off until they click Start.
@@ -32,10 +63,11 @@ export default function VoiceSession() {
     // Browsers only allow audio playback after a user gesture, so this must run on click.
     await session.room.startAudio();
     await session.room.localParticipant.setMicrophoneEnabled(true);
+    // Tells the agent to greet; it also needs the user's time zone to resolve "tomorrow".
     await session.room.localParticipant.performRpc({
       destinationIdentity: agent.identity!,
       method: 'lumi.start',
-      payload: '',
+      payload: JSON.stringify({ timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
     });
     setStarted(true);
   }
@@ -53,6 +85,17 @@ export default function VoiceSession() {
       <p className="status">{status}</p>
       {agent.isConnected && !started && <button onClick={start}>Start talking</button>}
       {started && !agent.isFinished && <button onClick={() => session.end()}>End</button>}
+      {/* Plain list until the board UI lands; "last seen" marks the cached copy. */}
+      {!board.live && board.tasks.length > 0 && <p>Last seen</p>}
+      <ul>
+        {board.tasks.map((task) => (
+          <li key={task.id}>
+            {task.done ? '✓ ' : ''}
+            {task.title} · {task.priority}
+            {task.target_date ? ` · ${task.target_date}` : ''}
+          </li>
+        ))}
+      </ul>
     </SessionProvider>
   );
 }
