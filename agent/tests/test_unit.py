@@ -12,7 +12,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer
 from conftest import needs_db
-from livekit.agents import ToolError, llm
+from livekit.agents import Agent, ToolError, llm
 from livekit.plugins import groq
 
 import config
@@ -70,6 +70,27 @@ def test_lumi_signs_tool_calls_before_every_llm_request():
     from agent import Lumi
 
     assert "llm_node" in Lumi.__dict__
+
+
+async def test_llm_requests_carry_only_recent_history(monkeypatch):
+    sent = []
+
+    def fake_default_llm_node(agent, chat_ctx, tools, model_settings):
+        sent.append(chat_ctx)
+
+    monkeypatch.setattr(Agent.default, "llm_node", fake_default_llm_node)
+    agent = Lumi()
+    ctx = llm.ChatContext()
+    ctx.add_message(role="system", content="instructions")
+    for n in range(30):
+        ctx.add_message(role="user", content=f"turn {n}")
+    agent.llm_node(ctx, [], None)
+
+    request = sent[0]
+    assert request.items[0].text_content == "instructions"  # always kept
+    assert request.items[-1].text_content == "turn 29"
+    assert len(request.items) == config.MAX_HISTORY_ITEMS + 1
+    assert len(ctx.items) == 31  # the session's own history is untouched
 
 
 def test_signed_tool_calls_reach_the_request():

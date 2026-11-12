@@ -15,6 +15,10 @@ IDLE_TIMEOUT_SECONDS = 3 * 60
 # "next Friday" instead of computing it. 0 turns the calendar off (used to measure it:
 # CALENDAR_DAYS=0 uv run pytest -m eval -k due_date).
 CALENDAR_DAYS = int(os.getenv("CALENDAR_DAYS", "14"))
+# How many recent chat items (messages, tool calls, tool results) each LLM request
+# carries. A task turn is about four items, so this is the last five to ten turns:
+# enough for "undo" and "which one?" follow-ups.
+MAX_HISTORY_ITEMS = 20
 # Notes are cut to this many characters in the prompt: enough to tell tasks apart,
 # without paying for long notes on every request.
 NOTES_PREVIEW_CHARS = 60

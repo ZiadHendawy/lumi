@@ -50,7 +50,13 @@ class Lumi(Agent):
         )
 
     def llm_node(self, chat_ctx, tools, model_settings):
-        # Runs before every LLM request; see config.sign_tool_calls_for_gemini for why.
+        # Runs before every LLM request. Every request re-sends the whole conversation,
+        # which grew ~150 tokens a turn in a live run (2.0K -> 2.9K input tokens), and
+        # more tokens mean a slower first token and the 8K tokens/min cap sooner. Old
+        # turns aren't needed: the board and facts in the instructions are the truth.
+        # Truncating a copy keeps the session's own history whole.
+        chat_ctx = chat_ctx.copy().truncate(max_items=config.MAX_HISTORY_ITEMS)
+        # See config.sign_tool_calls_for_gemini for why.
         config.sign_tool_calls_for_gemini(chat_ctx)
         return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
 
