@@ -14,10 +14,12 @@ from dataclasses import dataclass, field
 from typing import Literal
 from zoneinfo import ZoneInfo
 
+import aiohttp
 import psycopg
 from livekit import rtc
 from livekit.agents import Agent, RunContext, ToolError, function_tool
 
+import config
 import memory
 import prompt
 
@@ -298,3 +300,82 @@ async def forget_fact(context: RunContext[SessionState], key: str) -> str:
     async with state.lock:
         await refresh_instructions(context.session.current_agent, state)
     return f"Forgot {fact_key(key)}."
+
+
+# --- Weather (Open-Meteo) ------------------------------------------------------
+
+# WMO weather codes, grouped: each entry covers the codes up to and including its number.
+WEATHER_WORDS = [
+    (0, "clear skies"),
+    (3, "some clouds"),
+    (48, "fog"),
+    (57, "drizzle"),
+    (67, "rain"),
+    (77, "snow"),
+    (82, "rain showers"),
+    (86, "snow showers"),
+    (99, "thunderstorms"),
+]
+
+
+@function_tool
+async def get_weather(context: RunContext[SessionState], city: str, date: str) -> str:
+    """Weather forecast for a city on a date (YYYY-MM-DD)."""
+    day = parse_date(date)
+    today = context.userdata.today()
+    if not today <= day <= today + datetime.timedelta(days=config.FORECAST_DAYS_AHEAD):
+        raise ToolError(
+            f"Forecasts only cover today to {config.FORECAST_DAYS_AHEAD} days ahead."
+        )
+    # The geocoder matches place names only: "Paris, France" finds nothing.
+    name = city.split(",")[0].strip()
+    timeout = aiohttp.ClientTimeout(total=config.WEATHER_TIMEOUT_SECONDS)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as http:
+            async with http.get(
+                config.GEOCODING_URL, params={"name": name, "count": 1}
+            ) as resp:
+                resp.raise_for_status()
+                places = (await resp.json()).get("results")
+            if not places:
+                raise ToolError(f"Couldn't find a place called {city}.")
+            place = places[0]
+            async with http.get(
+                config.FORECAST_URL,
+                params={
+                    "latitude": place["latitude"],
+                    "longitude": place["longitude"],
+                    "daily": "weather_code,temperature_2m_max,temperature_2m_min,"
+                    "precipitation_probability_max",
+                    "timezone": "auto",
+                    "start_date": day.isoformat(),
+                    "end_date": day.isoformat(),
+                },
+            ) as resp:
+                resp.raise_for_status()
+                daily = (await resp.json())["daily"]
+            code = daily["weather_code"][0]
+            high = round(daily["temperature_2m_max"][0])
+            low = round(daily["temperature_2m_min"][0])
+            rain = daily["precipitation_probability_max"][0]
+            words = next(w for top, w in WEATHER_WORDS if code <= top)
+    except (
+        aiohttp.ClientError,
+        TimeoutError,
+        LookupError,
+        TypeError,
+        StopIteration,
+    ) as e:
+        # Covers a down or slow service and an answer missing the data we need. Either
+        # way the model must not fill the gap with a made-up forecast.
+        logger.warning("weather lookup failed", exc_info=True)
+        raise ToolError(
+            "The weather service didn't answer. No forecast is known."
+        ) from e
+
+    report = (
+        f"{place['name']}, {spoken_date(day)}: {words}, high {high}, low {low} Celsius"
+    )
+    if rain is not None:
+        report += f", {rain} percent chance of rain"
+    return report + "."

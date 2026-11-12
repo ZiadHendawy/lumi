@@ -15,6 +15,13 @@ IDLE_TIMEOUT_SECONDS = 3 * 60
 # without paying for long notes on every request.
 NOTES_PREVIEW_CHARS = 60
 
+# Open-Meteo: free, no API key. Its forecast covers today plus 15 days.
+GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+FORECAST_DAYS_AHEAD = 15
+# The user is waiting in silence while this runs; better a quick "couldn't get it".
+WEATHER_TIMEOUT_SECONDS = 3
+
 # Checked 2026-11-11: llama-3.3-70b is no longer offered. gpt-oss-120b made correct tool
 # calls in testing; qwen/qwen3.8-27b was ~0.2 s faster and is the first thing to try for latency.
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")

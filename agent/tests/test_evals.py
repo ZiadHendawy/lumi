@@ -11,7 +11,7 @@ from datetime import date
 
 import pytest
 from conftest import needs_db
-from livekit.agents import AgentSession
+from livekit.agents import AgentSession, ToolError, mock_tools
 
 import config
 import memory
@@ -262,3 +262,74 @@ async def test_forgets_a_fact(db, new_user):
         result = await session.run(user_input="Forget my favorite color")
         result.expect.next_event().is_function_call(name="forget_fact")
     assert await memory.load_facts(db, user) == {}
+
+
+# --- M1: weather (the tool is mocked; its HTTP is covered by unit tests) ---------
+
+
+def fake_weather(city: str, date: str) -> str:
+    return f"{city}, {date}: thunderstorms, high 33, low 24 Celsius."
+
+
+def weather_down(city: str, date: str) -> str:
+    raise ToolError("The weather service didn't answer. No forecast is known.")
+
+
+@needs_db
+@pytest.mark.core
+async def test_weather_uses_the_city_and_date_asked_for(db, new_user):
+    async with judge() as judge_llm, lumi(db, new_user()) as session:
+        with mock_tools(Lumi, {"get_weather": fake_weather}):
+            result = await session.run(
+                user_input="What's the weather in Jeddah tomorrow?"
+            )
+        args = call_args(
+            result.expect.next_event().is_function_call(name="get_weather")
+        )
+        assert "jeddah" in args["city"].lower()
+        assert args["date"] == "2026-11-28"
+        result.expect.next_event().is_function_call_output(is_error=False)
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(judge_llm, intent="Says to expect thunderstorms in Jeddah.")
+        )
+        result.expect.no_more_events()
+
+
+@needs_db
+async def test_weather_falls_back_to_the_saved_home_city(db, new_user):
+    user = new_user()
+    await memory.save_fact(db, user, "home_city", "Riyadh")
+    async with lumi(db, user) as session:
+        with mock_tools(Lumi, {"get_weather": fake_weather}):
+            result = await session.run(user_input="Will it rain tomorrow?")
+        args = call_args(
+            result.expect.next_event().is_function_call(name="get_weather")
+        )
+        assert "riyadh" in args["city"].lower()
+
+
+@needs_db
+@pytest.mark.core
+async def test_weather_failure_gets_an_honest_reply(db, new_user):
+    async with judge() as judge_llm, lumi(db, new_user()) as session:
+        with mock_tools(Lumi, {"get_weather": weather_down}):
+            result = await session.run(
+                user_input="What's the weather in Jeddah tomorrow?"
+            )
+        result.expect.next_event().is_function_call(name="get_weather")
+        result.expect.next_event().is_function_call_output(is_error=True)
+        await (
+            result.expect.next_event()
+            .is_message(role="assistant")
+            .judge(
+                judge_llm,
+                # About meaning, not wording: a judge on a backup model once failed
+                # "couldn't reach the weather service for Jeddah tomorrow" for not
+                # saying "right now".
+                intent="Says it couldn't get the forecast. Gives no temperatures "
+                "or conditions.",
+            )
+        )
+        result.expect.no_more_events()

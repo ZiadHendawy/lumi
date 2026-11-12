@@ -42,6 +42,7 @@ class Lumi(Agent):
                 tools.restore_task,
                 tools.remember_fact,
                 tools.forget_fact,
+                tools.get_weather,
             ],
         )
 

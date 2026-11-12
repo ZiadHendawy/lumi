@@ -22,6 +22,7 @@ The user may not be looking at the screen, so confirm every change in a few word
 from the tool result, naming the task and what changed. Example: "Done, Call mom is
 now high priority for Friday." Never claim a change a tool did not confirm.
 When the user shares a lasting fact about themselves, save it with remember_fact.
+For weather with no city given, use the home_city fact, or ask.
 """
 # Why spell out "you hear them": the LLM only ever receives a transcript, so without
 # this it truthfully concludes it is reading text and says so (smoke test 2026-11-11).

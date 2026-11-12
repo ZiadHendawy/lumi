@@ -1,5 +1,6 @@
 """Fast tests with no LLM calls. Run on every push."""
 
+import asyncio
 import json
 import os
 from datetime import UTC, date, datetime
@@ -8,6 +9,8 @@ from types import SimpleNamespace
 
 import psycopg
 import pytest
+from aiohttp import web
+from aiohttp.test_utils import TestServer
 from conftest import needs_db
 from livekit.agents import ToolError, llm
 from livekit.plugins import groq
@@ -422,3 +425,88 @@ async def test_fact_tools_normalise_keys(db, new_user):
     )
     with pytest.raises(ToolError, match="No fact"):
         await tools.forget_fact(ctx, key="favorite_color")
+
+
+# --- M1: weather, against a local fake of Open-Meteo -------------------------
+
+
+@pytest.fixture
+async def open_meteo(monkeypatch):
+    """A local HTTP server standing in for Open-Meteo. Set .forecast_status to fail it."""
+    fake = SimpleNamespace(forecast_status=200, delay=0, requests=[])
+
+    async def search(request):
+        fake.requests.append(dict(request.query))
+        if request.query["name"] != "Jeddah":
+            return web.json_response({"generationtime_ms": 0.1})  # no "results"
+        return web.json_response(
+            {"results": [{"name": "Jeddah", "latitude": 21.5, "longitude": 39.2}]}
+        )
+
+    async def forecast(request):
+        fake.requests.append(dict(request.query))
+        await asyncio.sleep(fake.delay)
+        if fake.forecast_status != 200:
+            return web.json_response({"error": True}, status=fake.forecast_status)
+        return web.json_response(
+            {
+                "daily": {
+                    "time": [request.query["start_date"]],
+                    "weather_code": [95],
+                    "temperature_2m_max": [32.6],
+                    "temperature_2m_min": [23.9],
+                    "precipitation_probability_max": [93],
+                }
+            }
+        )
+
+    app = web.Application()
+    app.router.add_get("/search", search)
+    app.router.add_get("/forecast", forecast)
+    server = TestServer(app)
+    await server.start_server()
+    monkeypatch.setattr(config, "GEOCODING_URL", str(server.make_url("/search")))
+    monkeypatch.setattr(config, "FORECAST_URL", str(server.make_url("/forecast")))
+    yield fake
+    await server.close()
+
+
+def weather_context():
+    return fake_context(tools.SessionState(user_id="u", db=None, fixed_today=FRIDAY))
+
+
+async def test_weather_reports_the_forecast(open_meteo):
+    reply = await tools.get_weather(
+        weather_context(), city="Jeddah, Saudi Arabia", date="2026-11-28"
+    )
+    assert reply == (
+        "Jeddah, Saturday November 28: thunderstorms, high 33, low 24 Celsius,"
+        " 93 percent chance of rain."
+    )
+    assert open_meteo.requests[0]["name"] == "Jeddah"
+    assert open_meteo.requests[1]["start_date"] == "2026-11-28"
+
+
+async def test_weather_service_failure_is_a_tool_error(open_meteo):
+    open_meteo.forecast_status = 500
+    with pytest.raises(ToolError, match="didn't answer"):
+        await tools.get_weather(weather_context(), city="Jeddah", date="2026-11-28")
+
+
+async def test_weather_timeout_is_a_tool_error(open_meteo, monkeypatch):
+    monkeypatch.setattr(config, "WEATHER_TIMEOUT_SECONDS", 0.1)
+    open_meteo.delay = 1
+    with pytest.raises(ToolError, match="didn't answer"):
+        await tools.get_weather(weather_context(), city="Jeddah", date="2026-11-28")
+
+
+async def test_weather_unknown_city_is_a_tool_error(open_meteo):
+    with pytest.raises(ToolError, match="Couldn't find"):
+        await tools.get_weather(weather_context(), city="Atlantis", date="2026-11-28")
+
+
+@pytest.mark.parametrize("day", ["2026-11-26", "2026-12-13", "tomorrow"])
+async def test_weather_rejects_dates_it_cannot_forecast(open_meteo, day):
+    with pytest.raises(ToolError):
+        await tools.get_weather(weather_context(), city="Jeddah", date=day)
+    assert open_meteo.requests == []  # rejected before any HTTP call
