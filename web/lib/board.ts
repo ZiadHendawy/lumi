@@ -218,6 +218,49 @@ export function describeFactChanges(before: Facts, after: Facts): string[] {
   return [...remembered, ...forgot];
 }
 
+// --- Tool activity: what Lumi is doing right now, from the `lumi.activity` stream.
+
+export type Activity = { call_id: string; tool: string; task_id: number | null };
+export type ActivityEvent = ({ status: 'started' } & Activity) | { status: 'ended'; call_id: string };
+
+export function parseActivity(text: string): ActivityEvent | null {
+  try {
+    const data = JSON.parse(text);
+    if (typeof data?.call_id !== 'string') return null;
+    if (data.status === 'ended') return { status: 'ended', call_id: data.call_id };
+    if (data.status !== 'started' || typeof data.tool !== 'string') return null;
+    const task_id = typeof data.task_id === 'number' ? data.task_id : null;
+    return { status: 'started', call_id: data.call_id, tool: data.tool, task_id };
+  } catch {
+    return null;
+  }
+}
+
+// The tools still running: a start adds one, its end removes it. Several can run at
+// once ("add eggs and bread" is two parallel creates).
+export function applyActivity(running: Activity[], event: ActivityEvent): Activity[] {
+  if (event.status === 'ended') return running.filter((a) => a.call_id !== event.call_id);
+  const { status: _, ...activity } = event;
+  return [...running, activity];
+}
+
+// What the lantern says while a tool runs. Keys are the agent's tool names (tools.py).
+export const ACTIVITY_TEXT: Record<string, string> = {
+  look_up: 'Searching the web…',
+  create_task: 'Adding it to the board…',
+  update_task: 'Changing the board…',
+  delete_task: 'Taking it off the board…',
+  restore_task: 'Bringing it back…',
+  remember_fact: 'Remembering that…',
+  forget_fact: 'Forgetting that…',
+};
+
+// The newest running tool's line, or null when nothing is running.
+export function activityText(running: Activity[]): string | null {
+  const latest = running[running.length - 1];
+  return latest ? (ACTIVITY_TEXT[latest.tool] ?? 'Working on it…') : null;
+}
+
 // --- Captions: what the user said in their latest turn.
 
 // The fields of a LiveKit session message that the caption needs. Chat messages have no `type`.

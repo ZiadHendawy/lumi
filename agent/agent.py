@@ -18,6 +18,7 @@ from livekit.agents import (
     JobContext,
     JobProcess,
     SessionUsageUpdatedEvent,
+    ToolExecutionUpdatedEvent,
     TurnHandlingOptions,
     UserStateChangedEvent,
     cli,
@@ -102,19 +103,24 @@ def usage_delta(before, after) -> dict | None:
     return row if used or row["characters"] else None
 
 
-# Metrics writes run beside the conversation, so a turn never waits on them. The set
-# holds a reference to each pending write, so it can't be garbage-collected midway.
-_metrics_writes: set[asyncio.Task] = set()
+# Metrics writes and screen hints run beside the conversation, so a turn never waits
+# on them. The set holds a reference to each pending task, so it can't be
+# garbage-collected midway.
+_background: set[asyncio.Task] = set()
+
+
+def run_beside(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background.add(task)
+    task.add_done_callback(_background_done)
 
 
 def write_metrics(write, conn, row: dict) -> None:
-    task = asyncio.create_task(write(conn, row))
-    _metrics_writes.add(task)
-    task.add_done_callback(_metrics_write_done)
+    run_beside(write(conn, row))
 
 
-def _metrics_write_done(task: asyncio.Task) -> None:
-    _metrics_writes.discard(task)
+def _background_done(task: asyncio.Task) -> None:
+    _background.discard(task)
     # A lost metrics row is not worth failing or slowing a conversation over.
     if not task.cancelled() and task.exception() is not None:
         logger.warning("metrics write failed", exc_info=task.exception())
@@ -198,6 +204,14 @@ async def entrypoint(ctx: JobContext) -> None:
                 extra={"tool": call.name, "seconds": seconds, "error": output.is_error},
             )
             turn["tool_seconds"] = turn.get("tool_seconds", 0) + seconds
+
+    @session.on("tool_execution_updated")
+    def show_tool_activity(ev: ToolExecutionUpdatedEvent) -> None:
+        # Fires when the model has decided on a tool, before it runs: the screen can
+        # say "Searching the web..." during the 1-3 s a search takes.
+        payload = tools.activity_payload(ev.update)
+        if payload:
+            run_beside(tools.push_activity(ctx.room, payload))
 
     session.on("error", lambda ev: apologise_if_no_model_answered(session, ev))
 

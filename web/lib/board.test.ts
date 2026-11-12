@@ -6,7 +6,10 @@ import {
   type Change,
   type Task,
   addChange,
+  activityText,
+  applyActivity,
   cardChange,
+  parseActivity,
   changedFacts,
   describeFactChanges,
   factLabel,
@@ -264,4 +267,30 @@ test('describeFactChanges words what was remembered and forgotten', () => {
     'Remembered your favorite color: blue',
     'Forgot your home city',
   ]);
+});
+
+test('parseActivity reads a start and an end, and rejects anything else', () => {
+  assert.deepEqual(parseActivity('{"status":"started","call_id":"c1","tool":"look_up","task_id":4}'), {
+    status: 'started',
+    call_id: 'c1',
+    tool: 'look_up',
+    task_id: 4,
+  });
+  assert.deepEqual(parseActivity('{"status":"started","call_id":"c1","tool":"look_up","task_id":"4"}')?.status, 'started');
+  assert.equal((parseActivity('{"status":"started","call_id":"c1","tool":"x","task_id":"4"}') as { task_id: unknown }).task_id, null);
+  assert.deepEqual(parseActivity('{"status":"ended","call_id":"c1"}'), { status: 'ended', call_id: 'c1' });
+  assert.equal(parseActivity('{"status":"started"}'), null);
+  assert.equal(parseActivity('nope'), null);
+});
+
+test('applyActivity tracks parallel tools until each one ends', () => {
+  const start = (call_id: string, tool: string) => ({ status: 'started' as const, call_id, tool, task_id: null });
+  let running = applyActivity([], start('a', 'create_task'));
+  running = applyActivity(running, start('b', 'look_up'));
+  assert.equal(activityText(running), 'Searching the web…');
+  running = applyActivity(running, { status: 'ended', call_id: 'b' });
+  assert.equal(activityText(running), 'Adding it to the board…');
+  running = applyActivity(running, { status: 'ended', call_id: 'a' });
+  assert.equal(activityText(running), null);
+  assert.equal(activityText([{ call_id: 'x', tool: 'new_tool', task_id: null }]), 'Working on it…');
 });

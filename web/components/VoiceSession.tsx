@@ -14,13 +14,17 @@ import {
 } from '@livekit/components-react';
 import Board from '@/components/Board';
 import {
+  type Activity,
   type Facts,
   type RecentChange,
   type Task,
+  activityText,
   addChange,
+  applyActivity,
   changedFacts,
   describeFactChanges,
   loadCachedBoard,
+  parseActivity,
   parseBoard,
   saveCachedBoard,
   userCaption,
@@ -29,6 +33,7 @@ import { getUserId } from '@/lib/userId';
 
 const tokenSource = TokenSource.endpoint('/api/token');
 const BOARD_TOPIC = 'lumi.board'; // must match the topic the agent sends on
+const ACTIVITY_TOPIC = 'lumi.activity'; // which tool the agent is running
 
 type BoardState = {
   tasks: Task[];
@@ -76,6 +81,7 @@ export default function VoiceSession() {
   const [phase, setPhase] = useState<'idle' | 'starting' | 'talking'>('idle');
   const [muted, setMuted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [running, setRunning] = useState<Activity[]>([]); // tools running right now
 
   // Start from the board cached on the last visit, so it's there during the agent's cold start.
   const [board, setBoard] = useState<BoardState>(() => {
@@ -113,8 +119,22 @@ export default function VoiceSession() {
         return { tasks: payload.tasks, facts: payload.facts, recent, factsChanged, seq, live: true };
       });
     });
-    return () => room.unregisterTextStreamHandler(BOARD_TOPIC);
+    // A tool starting or ending, so the screen can say what Lumi is doing during a slow one.
+    room.registerTextStreamHandler(ACTIVITY_TOPIC, async (reader) => {
+      const event = parseActivity(await reader.readAll());
+      if (event) setRunning((prev) => applyActivity(prev, event));
+    });
+    return () => {
+      room.unregisterTextStreamHandler(BOARD_TOPIC);
+      room.unregisterTextStreamHandler(ACTIVITY_TOPIC);
+    };
   }, [session.room, userId]);
+
+  // Tools only run while Lumi is thinking. Clearing on any other state means a lost
+  // "ended" message (a dropped connection) can't leave a card shimmering forever.
+  useEffect(() => {
+    if (agent.state !== 'thinking') setRunning([]);
+  }, [agent.state]);
 
   // Connect (and dispatch the agent) on page load, so the cold start overlaps with the
   // user reading the page. The mic stays off until they tap the lantern.
@@ -176,6 +196,11 @@ export default function VoiceSession() {
   else if (muted) state = 'muted';
   else state = agent.state; // listening | thinking | speaking
 
+  // The tab says what Lumi is doing, so a session in a background tab isn't forgotten.
+  useEffect(() => {
+    document.title = state === 'listening' || state === 'thinking' || state === 'speaking' ? `${STATUS_TEXT[state]} · Lumi` : 'Lumi';
+  }, [state]);
+
   const talking = state === 'listening' || state === 'thinking' || state === 'speaking' || state === 'muted';
   const onLanternClick = state === 'ready' ? startTalking : state === 'ended' || state === 'failed' ? wakeAgain : undefined;
   // The lantern pulses with whoever is talking: the user's mic while listening, Lumi's voice while speaking.
@@ -195,6 +220,7 @@ export default function VoiceSession() {
         recent={board.recent}
         seq={board.seq}
         live={board.live}
+        working={running}
         onGhostGone={ghostGone}
         onReceiptDone={receiptDone}
       />
@@ -215,7 +241,7 @@ export default function VoiceSession() {
           )}
         </div>
         <p className="lantern-status" role="status">
-          {error ?? STATUS_TEXT[state]}
+          {error ?? (state === 'thinking' ? activityText(running) : null) ?? STATUS_TEXT[state]}
         </p>
       </div>
     </SessionProvider>

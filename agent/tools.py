@@ -29,6 +29,7 @@ import prompt
 logger = logging.getLogger("lumi")
 
 BOARD_TOPIC = "lumi.board"  # the browser listens on this text-stream topic
+ACTIVITY_TOPIC = "lumi.activity"  # which tool is running right now
 # A create with the same title this soon after another is treated as a repeat call.
 DUPLICATE_CREATE_SECONDS = 10
 
@@ -128,6 +129,39 @@ async def publish(context: RunContext[SessionState], change: dict | None) -> Non
         # Screen first, so it can update before Lumi starts speaking.
         await push_board(state, tasks, change, facts)
         await refresh_instructions(context.session.current_agent, state, tasks, facts)
+
+
+def activity_payload(update) -> dict | None:
+    """A tool call starting or ending, as the browser's "working on it" signal, or None
+    for the updates it doesn't need. Sent as the model decides, before the tool runs,
+    so a slow web search shows on screen instead of as a silent pause."""
+    if update.type == "tool_call_started":
+        call = update.function_call
+        try:
+            task_id = json.loads(call.arguments).get("task_id")
+        except (ValueError, AttributeError):
+            task_id = (
+                None  # the arguments are the model's text; never trust their shape
+            )
+        return {
+            "status": "started",
+            "call_id": call.call_id,
+            "tool": call.name,
+            "task_id": task_id if isinstance(task_id, int) else None,
+        }
+    if update.type == "tool_call_ended":
+        return {"status": "ended", "call_id": update.call_id}
+    return None
+
+
+async def push_activity(room: rtc.Room, payload: dict) -> None:
+    try:
+        await room.local_participant.send_text(
+            json.dumps(payload), topic=ACTIVITY_TOPIC
+        )
+    except Exception:
+        # Only a hint for the screen; the tool itself must not notice a failed send.
+        logger.warning("activity push failed", exc_info=True)
 
 
 async def after_task_change(

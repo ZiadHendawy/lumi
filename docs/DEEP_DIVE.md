@@ -311,6 +311,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 | Screen-reader live region | An `aria-live="polite"` list of the same receipts. The visual toasts are `aria-hidden`. | Each change is announced once. |
 | Captions | `userCaption` joins every user segment since Lumi last spoke (#15). Lumi's current line shows below. | A misheard word is easy to spot. |
 | Reduced motion | `prefers-reduced-motion` swaps the keyframes for gentler ones | Same information, less movement. |
+| Tool activity | `tool_execution_updated` → `lumi.activity`: the lantern says what Lumi is doing, and a card being searched breathes light (label after 0.4 s, so fast tools don't flash) | A 1–3 s web search is no longer a silent pause. It's the earliest honest signal: the model has decided, the tool hasn't run. |
 | Memory shelf | The facts ride in every board push; `changedFacts` lights only the chip that changed | "Remembers you" is visible too, not only spoken, and it shows the stored value, not the model's claim. |
 
 ### Bugs the live run found, all fixed
@@ -339,7 +340,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 
 1. **Measure on the deployed URL**, with the agent in `us-east` next to Neon.
 2. **Put the live-audio harness in the repo** and run it nightly. Today it is a one-off script on the dev Mac.
-3. **A "working on it" state on the card** while a slow tool runs (web search takes 1–3 s), so the screen reacts the moment the model decides.
+3. ~~**A "working on it" state on the card** while a slow tool runs~~ **Done** (tool activity, above).
 4. **Browser-side timing in production:** log when each board arrives against when Lumi's audio starts, instead of reading it from a test harness.
 5. **Highlight the words that changed in the notes**, not the whole notes area, for long notes from web search.
 

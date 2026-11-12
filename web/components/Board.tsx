@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import {
+  ACTIVITY_TEXT,
+  type Activity,
   type Facts,
   type RecentChange,
   type Task,
@@ -20,6 +22,7 @@ type Props = {
   recent: RecentChange[]; // changes still animating, oldest first
   seq: number; // bumps on every board the agent sends
   live: boolean; // false while showing the cached board from the last visit
+  working: Activity[]; // tools running now; a card with a running tool shimmers
   onGhostGone: (seq: number) => void; // a deleted card has drifted away
   onReceiptDone: (seq: number) => void; // a receipt toast has faded out
 };
@@ -27,7 +30,7 @@ type Props = {
 const PRIORITY_LABELS = { high: 'High', medium: 'Medium', low: 'Low' };
 
 // Pure view of the board. All animation is CSS, chosen by class names derived from `recent`.
-export default function Board({ tasks, facts, factsChanged, recent, seq, live, onGhostGone, onReceiptDone }: Props) {
+export default function Board({ tasks, facts, factsChanged, recent, seq, live, working, onGhostGone, onReceiptDone }: Props) {
   const [showDone, setShowDone] = useState(false);
   const now = new Date();
 
@@ -57,6 +60,8 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, o
     const classes = ['card', `prio-${task.priority}`];
     if (task.done) classes.push('is-done');
     if (changed) classes.push(`is-${changed.change.action}`);
+    const busy = working.find((a) => a.task_id === task.id);
+    if (busy) classes.push('is-working');
     return (
       <article
         // A changed card gets a fresh key, so React re-creates it and its CSS animation
@@ -84,6 +89,8 @@ export default function Board({ tasks, facts, factsChanged, recent, seq, live, o
         </div>
         <h3 className="card-title">{task.title}</h3>
         {task.body && <p className="card-body">{task.body}</p>}
+        {/* CSS shows this only after a moment, so a fast tool doesn't flash it. */}
+        {busy && <p className="card-working">{ACTIVITY_TEXT[busy.tool] ?? 'Working on it…'}</p>}
       </article>
     );
   }

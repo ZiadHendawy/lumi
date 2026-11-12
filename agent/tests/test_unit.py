@@ -764,6 +764,63 @@ async def test_a_failed_metrics_write_is_logged_not_raised(caplog):
         raise psycopg.OperationalError("connection closed")
 
     agent.write_metrics(broken_write, None, {})
-    while agent._metrics_writes:  # let the write run and its callback fire
+    while agent._background:  # let the write run and its callback fire
         await asyncio.sleep(0)
     assert "metrics write failed" in caplog.text
+
+
+def started(name: str, arguments: str):
+    from livekit.agents import ToolCallStarted
+    from livekit.agents.llm import FunctionCall
+
+    call = FunctionCall(call_id="call-1", name=name, arguments=arguments)
+    return ToolCallStarted(function_call=call)
+
+
+def test_activity_names_the_tool_and_its_task_before_it_runs():
+    assert tools.activity_payload(
+        started("look_up", '{"question": "x", "task_id": 4}')
+    ) == {
+        "status": "started",
+        "call_id": "call-1",
+        "tool": "look_up",
+        "task_id": 4,
+    }
+    # No task, arguments that aren't JSON, or a task id that isn't a number: no card.
+    assert (
+        tools.activity_payload(started("look_up", '{"question": "x"}'))["task_id"]
+        is None
+    )
+    assert (
+        tools.activity_payload(started("create_task", "{not json"))["task_id"] is None
+    )
+    assert (
+        tools.activity_payload(started("update_task", '{"task_id": "4"}'))["task_id"]
+        is None
+    )
+
+
+def test_activity_end_and_other_updates():
+    from livekit.agents.voice.events import ToolCallEnded, ToolCallUpdated
+
+    ended = ToolCallEnded(id="call-1", call_id="call-1", status="done")
+    assert tools.activity_payload(ended) == {"status": "ended", "call_id": "call-1"}
+    update = ToolCallUpdated(id="call-1", call_id="call-1", message="halfway")
+    assert tools.activity_payload(update) is None
+
+
+async def test_activity_goes_out_on_its_own_topic_and_never_raises():
+    sent = []
+
+    async def send_text(text, *, topic):
+        sent.append((topic, json.loads(text)))
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
+    await tools.push_activity(room, {"status": "ended", "call_id": "c"})
+    assert sent == [("lumi.activity", {"status": "ended", "call_id": "c"})]
+
+    async def broken(text, *, topic):
+        raise ConnectionError("room closed")
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=broken))
+    await tools.push_activity(room, {"status": "ended", "call_id": "c"})  # no raise
