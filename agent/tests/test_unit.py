@@ -3,6 +3,7 @@
 import asyncio
 import json
 import os
+import uuid
 from datetime import UTC, date, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -642,3 +643,102 @@ def test_lumi_says_sorry_only_when_every_model_failed():
     assert said == []
     agent.apologise_if_no_model_answered(session, error("llm_error", False))
     assert said == [(prompt.NO_MODEL_ANSWERED, {"add_to_chat_ctx": False})]
+
+
+# --- Metrics for the /stats page --------------------------------------------
+
+
+def test_usage_delta_is_what_changed_since_the_last_total():
+    from livekit.agents.metrics import LLMModelUsage, STTModelUsage, TTSModelUsage
+
+    from agent import usage_delta
+
+    first = LLMModelUsage(
+        provider="groq", model="m", input_tokens=900, output_tokens=40
+    )
+    assert usage_delta(None, first) == {
+        "kind": "llm",
+        "model": "m",
+        "input_tokens": 900,
+        "output_tokens": 40,
+        "audio_seconds": 0,  # an LLM has no audio fields; they count as 0
+        "characters": 0,
+    }
+    second = first.model_copy(update={"input_tokens": 2100, "output_tokens": 70})
+    assert usage_delta(first, second)["input_tokens"] == 1200
+    assert usage_delta(first, second)["output_tokens"] == 30
+    # Most updates come from VAD metrics and move no model's totals: no row.
+    assert usage_delta(second, second) is None
+
+    stt = STTModelUsage(provider="deepgram", model="nova-3", audio_duration=5.0)
+    later = stt.model_copy(update={"audio_duration": 12.25})
+    assert usage_delta(stt, later)["kind"] == "stt"
+    assert usage_delta(stt, later)["audio_seconds"] == 7.25
+
+    tts = TTSModelUsage(provider="deepgram", model="aura-2", characters_count=42)
+    assert usage_delta(None, tts)["characters"] == 42
+
+
+@needs_db
+async def test_metrics_rows_round_trip_and_missing_stages_are_null(db):
+    model = f"test-{uuid.uuid4()}"  # rows have no user id, so tests tell theirs apart by model
+    try:
+        await memory.record_usage(
+            db,
+            {
+                "kind": "llm",
+                "model": model,
+                "input_tokens": 1200,
+                "output_tokens": 30,
+                "audio_seconds": 0,
+                "characters": 0,
+            },
+        )
+        # A plain reply: no tool ran and the board didn't change.
+        await memory.record_turn(
+            db, {"model": model, "e2e_latency": 0.9, "llm_ttft": 0.4}
+        )
+        cur = await db.execute(
+            "SELECT * FROM provider_usage WHERE model = %s", (model,)
+        )
+        [usage] = await cur.fetchall()
+        assert (usage["kind"], usage["input_tokens"], usage["output_tokens"]) == (
+            "llm",
+            1200,
+            30,
+        )
+        cur = await db.execute("SELECT * FROM turn_metrics WHERE model = %s", (model,))
+        [turn] = await cur.fetchall()
+        assert turn["e2e_latency"] == pytest.approx(0.9)
+        assert turn["tool_seconds"] is None and turn["board_lead"] is None
+    finally:
+        await db.execute("DELETE FROM provider_usage WHERE model = %s", (model,))
+        await db.execute("DELETE FROM turn_metrics WHERE model = %s", (model,))
+
+
+@needs_db
+async def test_provider_usage_only_takes_known_kinds(db):
+    with pytest.raises(psycopg.errors.CheckViolation):
+        await memory.record_usage(
+            db,
+            {
+                "kind": "vad",
+                "model": "silero",
+                "input_tokens": 0,
+                "output_tokens": 0,
+                "audio_seconds": 1,
+                "characters": 0,
+            },
+        )
+
+
+async def test_a_failed_metrics_write_is_logged_not_raised(caplog):
+    import agent
+
+    async def broken_write(conn, row):
+        raise psycopg.OperationalError("connection closed")
+
+    agent.write_metrics(broken_write, None, {})
+    while agent._metrics_writes:  # let the write run and its callback fire
+        await asyncio.sleep(0)
+    assert "metrics write failed" in caplog.text

@@ -1,8 +1,9 @@
 """All database access: plain SQL, no LiveKit imports.
 
-Every query filters on user_id, so one user can never read or change another's rows.
-Every change uses RETURNING, so callers report the row as actually stored, not as
-they asked for it.
+Every task and fact query filters on user_id, so one user can never read or change
+another's rows. Every task and fact change uses RETURNING, so callers report the row
+as actually stored, not as they asked for it. The metrics tables at the end hold no
+user data, so they have neither.
 """
 
 from datetime import date
@@ -170,3 +171,41 @@ async def forget_fact(conn: psycopg.AsyncConnection, user_id: str, key: str) -> 
         (user_id, key),
     )
     return await cur.fetchone() is not None
+
+
+# --- Metrics for the /stats page ----------------------------------------------
+
+
+async def record_usage(conn: psycopg.AsyncConnection, usage: dict) -> None:
+    """One row of provider_usage: kind, model, and what was used since the last row."""
+    await conn.execute(
+        "INSERT INTO provider_usage"
+        " (kind, model, input_tokens, output_tokens, audio_seconds, characters)"
+        " VALUES (%(kind)s, %(model)s, %(input_tokens)s, %(output_tokens)s,"
+        " %(audio_seconds)s, %(characters)s)",
+        usage,
+    )
+
+
+TURN_COLUMNS = (
+    "model",
+    "e2e_latency",
+    "transcription_delay",
+    "end_of_turn_delay",
+    "llm_ttft",
+    "tts_ttfb",
+    "tool_seconds",
+    "board_lead",
+)
+
+
+async def record_turn(conn: psycopg.AsyncConnection, turn: dict) -> None:
+    """One row of turn_metrics. A stage missing from `turn` is stored as NULL."""
+    await conn.execute(
+        "INSERT INTO turn_metrics (model, e2e_latency, transcription_delay,"
+        " end_of_turn_delay, llm_ttft, tts_ttfb, tool_seconds, board_lead)"
+        " VALUES (%(model)s, %(e2e_latency)s, %(transcription_delay)s,"
+        " %(end_of_turn_delay)s, %(llm_ttft)s, %(tts_ttfb)s, %(tool_seconds)s,"
+        " %(board_lead)s)",
+        {column: turn.get(column) for column in TURN_COLUMNS},
+    )
