@@ -11,6 +11,10 @@ AGENT_NAME = "lumi"  # must match the agentName the web app dispatches
 MAX_SESSION_SECONDS = 10 * 60
 IDLE_TIMEOUT_SECONDS = 3 * 60
 
+# How many upcoming days the prompt lists with their dates, so the model looks up
+# "next Friday" instead of computing it. 0 turns the calendar off (used to measure it:
+# CALENDAR_DAYS=0 uv run pytest -m eval -k due_date).
+CALENDAR_DAYS = int(os.getenv("CALENDAR_DAYS", "14"))
 # Notes are cut to this many characters in the prompt: enough to tell tasks apart,
 # without paying for long notes on every request.
 NOTES_PREVIEW_CHARS = 60

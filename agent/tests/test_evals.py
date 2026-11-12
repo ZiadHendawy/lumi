@@ -217,6 +217,100 @@ async def test_deletes_a_task_by_description(db, new_user):
     assert await memory.get_task(db, user, board["dentist"]["id"]) is None
 
 
+@needs_db
+@pytest.mark.core
+async def test_undo_brings_a_deleted_task_back(db, new_user):
+    user = new_user()
+    board = await seed_board(db, user)
+    async with lumi(db, user) as session:
+        await session.run(user_input="Delete the report task")
+        result = await session.run(user_input="Oops, undo that")
+        result.expect.next_event().is_function_call(name="restore_task")
+        result.expect.next_event().is_function_call_output(is_error=False)
+        result.expect.next_event().is_message(role="assistant")
+        result.expect.no_more_events()
+    assert await memory.get_task(db, user, board["report"]["id"]) is not None
+
+
+# Not in the core tier on purpose: the model still guesses about 1 run in 4 (3/4 and
+# 3/3 passes on gpt-oss-20b, 2026-11-12), and only the model can see that "the call"
+# is ambiguous, so code can't guard it. A flaky required check teaches people to
+# ignore red CI; the pass rate is tracked in docs/DEEP_DIVE.md instead.
+@needs_db
+async def test_asks_which_task_when_the_reference_is_ambiguous(db, new_user):
+    user = new_user()
+    await memory.create_task(db, user, "Call mom")
+    await memory.create_task(db, user, "Call the bank")
+    async with judge() as judge_llm, lumi(db, user) as session:
+        result = await session.run(user_input="Mark the call as done")
+        await (
+            result.expect.next_event()  # a message, not a guessed tool call
+            .is_message(role="assistant")
+            .judge(
+                judge_llm,
+                intent="Asks which task the user means, mom or the bank, "
+                "without marking anything done.",
+            )
+        )
+        result.expect.no_more_events()
+    assert not any(t["done"] for t in await memory.list_tasks(db, user))
+
+
+@needs_db
+@pytest.mark.core
+async def test_does_not_fake_a_change_to_a_task_that_does_not_exist(db, new_user):
+    user = new_user()
+    await seed_board(db, user)
+    async with judge() as judge_llm, lumi(db, user) as session:
+        result = await session.run(user_input="Delete the gym task")
+        await (
+            result.expect[-1]
+            .is_message(role="assistant")
+            .judge(
+                judge_llm,
+                intent="Says there is no gym task on the board (it may ask what the user "
+                "meant). Does not claim that anything was deleted.",
+            )
+        )
+    assert len(await memory.list_tasks(db, user)) == 3
+
+
+@needs_db
+@pytest.mark.core
+async def test_one_sentence_can_add_several_tasks(db, new_user):
+    user = new_user()
+    async with lumi(db, user) as session:
+        result = await session.run(user_input="Add eggs and bread")
+        result.expect.contains_function_call(name="create_task")
+    titles = sorted(t["title"].lower() for t in await memory.list_tasks(db, user))
+    assert len(titles) == 2
+    assert "eggs" in titles[1] and "bread" in titles[0]
+
+
+# The correctness deep dive measures these with and without the calendar in the
+# prompt: CALENDAR_DAYS=0 uv run pytest -m eval -k due_date
+@needs_db
+@pytest.mark.parametrize(
+    "when, expected",
+    [
+        ("tomorrow", "2026-11-28"),
+        ("next Friday", "2026-12-04"),
+        ("on Wednesday", "2026-12-02"),
+        ("this coming Sunday", "2026-11-29"),
+        ("in ten days", "2026-12-07"),
+        ("two weeks from today", "2026-12-11"),
+        ("on the 3rd", "2026-12-03"),
+    ],
+)
+async def test_due_date_from_relative_words(db, new_user, when, expected):
+    async with lumi(db, new_user()) as session:
+        result = await session.run(user_input=f"Add a task to renew my passport {when}")
+        args = call_args(
+            result.expect.next_event().is_function_call(name="create_task")
+        )
+        assert args["target_date"] == expected
+
+
 # --- M1: memory across sessions ---------------------------------------------
 
 

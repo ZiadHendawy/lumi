@@ -302,6 +302,20 @@ def test_instructions_for_an_empty_board():
     assert "Saved facts: none" in text
 
 
+def test_instructions_list_the_next_14_days():
+    text = prompt.build_instructions(FRIDAY, [], {})
+    # Starts tomorrow, crosses into December, and stops after 14 days.
+    assert "Calendar: Sat 2026-11-28, Sun 2026-11-29," in text
+    assert "Fri 2026-12-11" in text
+    assert "2026-12-12" not in text
+
+
+def test_calendar_can_be_turned_off(monkeypatch):
+    # The deep-dive measurement runs the date evals this way.
+    monkeypatch.setattr(config, "CALENDAR_DAYS", 0)
+    assert "Calendar" not in prompt.build_instructions(FRIDAY, [], {})
+
+
 @pytest.mark.parametrize(
     "payload, expected",
     [

@@ -4,7 +4,7 @@ Every request re-sends this prompt (and the 8K tokens/min free tier counts it), 
 stays short.
 """
 
-from datetime import date
+from datetime import date, timedelta
 
 import config
 
@@ -17,10 +17,13 @@ Reply in one to three short sentences of plain speech: no markdown, lists, emoji
 or symbols. Ask at most one question at a time. Say dates as words, like Friday the 4th.
 
 The board and facts below are always current; trust them over earlier messages.
-Tools take the task id from the board.
+Tools take the task id from the board. To change a task, if the user's words fit
+more than one task, don't guess: ask which one. If none fit, say so.
 The user may not be looking at the screen, so confirm every change in a few words
 from the tool result, naming the task and what changed. Example: "Done, Call mom is
 now high priority for Friday." Never claim a change a tool did not confirm.
+For dates, find the day in the calendar below instead of calculating it.
+"Undo" after a delete means restore_task; after other changes, make the reverse change.
 When the user shares a lasting fact about themselves, save it with remember_fact.
 For weather with no city given, use the home_city fact, or ask.
 """
@@ -36,6 +39,12 @@ GREETING = (
 def build_instructions(today: date, tasks: list[dict], facts: dict[str, str]) -> str:
     """The persona plus the ground truth the model must not have to remember."""
     lines = [INSTRUCTIONS, f"Today is {today.strftime('%A %Y-%m-%d')}."]
+
+    # LLMs are unreliable at date arithmetic ("next Friday" from a Thursday near the
+    # end of a month). A lookup table of real dates turns it into reading.
+    if config.CALENDAR_DAYS:
+        days = [today + timedelta(days=n) for n in range(1, config.CALENDAR_DAYS + 1)]
+        lines.append("Calendar: " + ", ".join(d.strftime("%a %Y-%m-%d") for d in days))
 
     lines.append("Board (id | title | priority | due | status | notes):")
     for t in tasks:
