@@ -51,8 +51,21 @@ class Lumi(Agent):
                 tools.look_up,
             ],
         )
+        # True when the last reply came from prompt.FIXED_REPLIES, so the turn's
+        # metrics can say "fixed reply" instead of naming a model.
+        self.last_reply_fixed = False
 
     def llm_node(self, chat_ctx, tools, model_settings):
+        # A few exact phrases ("thanks", "can you hear me?") get a fixed reply and no
+        # LLM call at all. This node runs before every request, the preemptive one
+        # included, so no tokens are spent. Only a user message counts: after a tool
+        # result, the model must always write the confirmation.
+        last = chat_ctx.items[-1] if chat_ctx.items else None
+        if last is not None and last.type == "message" and last.role == "user":
+            reply = prompt.fixed_reply(last.text_content or "")
+            self.last_reply_fixed = reply is not None
+            if reply:
+                return say_fixed(reply)
         # Runs before every LLM request. Every request re-sends the whole conversation,
         # which grew ~150 tokens a turn in a live run (2.0K -> 2.9K input tokens), and
         # more tokens mean a slower first token and the 8K tokens/min cap sooner. Old
@@ -62,6 +75,11 @@ class Lumi(Agent):
         # See config.sign_tool_calls_for_gemini for why.
         config.sign_tool_calls_for_gemini(chat_ctx)
         return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
+
+
+async def say_fixed(text: str):
+    # llm_node may yield plain text instead of model output; TTS speaks it as usual.
+    yield text
 
 
 def parse_timezone(payload: str) -> str:
@@ -180,6 +198,8 @@ async def entrypoint(ctx: JobContext) -> None:
                 "tts_ttfb": m.get("tts_node_ttfb"),
                 "model": (m.get("llm_metadata") or {}).get("model_name"),
             }
+            if session.current_agent.last_reply_fixed:
+                timings["model"] = "fixed reply"  # no model was asked
             logger.info("turn latency", extra=timings)
             # Only replies to the user: the greeting is said, with no turn to time.
             if timings["e2e_latency"] is not None:

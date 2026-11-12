@@ -848,3 +848,47 @@ async def test_the_screen_gets_the_prompt_the_model_reads(db, new_user):
     assert "Call mom" in prompts[0]
     # The board goes first: the prompt is only for the X-ray panel.
     assert [topic for topic, _ in sent] == ["lumi.board", "lumi.prompt"]
+
+
+@pytest.mark.parametrize(
+    "said, expected",
+    [
+        ("Thanks!", "You're welcome."),
+        ("Thank you, Lumi.", "You're welcome."),
+        ("Can you hear me?", prompt.FIXED_REPLIES["can you hear me"]),
+        ("That's all.", prompt.FIXED_REPLIES["bye"]),
+        ("thanks, and add milk", None),  # a task inside: the model decides
+        ("hear me", None),
+        ("", None),
+    ],
+)
+def test_fixed_replies_match_only_whole_phrases(said, expected):
+    assert prompt.fixed_reply(said) == expected
+
+
+async def test_a_fixed_phrase_skips_the_llm(monkeypatch):
+    asked = []
+
+    def fake_default_llm_node(agent, chat_ctx, tools, model_settings):
+        asked.append(chat_ctx)
+
+    monkeypatch.setattr(Agent.default, "llm_node", fake_default_llm_node)
+    agent = Lumi()
+    ctx = llm.ChatContext()
+    ctx.add_message(role="system", content="instructions")
+    ctx.add_message(role="user", content="Thanks!")
+    reply = [chunk async for chunk in agent.llm_node(ctx, [], None)]
+    assert reply == ["You're welcome."]
+    assert asked == [] and agent.last_reply_fixed
+
+    # Anything else, and anything after a tool result, goes to the model.
+    ctx.add_message(role="user", content="Add milk")
+    agent.llm_node(ctx, [], None)
+    assert len(asked) == 1 and not agent.last_reply_fixed
+    ctx.items.append(
+        llm.FunctionCallOutput(
+            call_id="c1", name="create_task", output="ok", is_error=False
+        )
+    )
+    agent.llm_node(ctx, [], None)
+    assert len(asked) == 2

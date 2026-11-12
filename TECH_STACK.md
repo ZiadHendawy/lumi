@@ -114,6 +114,7 @@ Figures marked "third-party" come from pricing write-ups. Figures marked "measur
 - **qwen3.8-27b was dropped** from the chain: it left out tool arguments (priority, date) and then confirmed them out loud. A wrong change said with confidence is worse than a slow answer.
 - **`attempt_timeout=10`** (the default is 5 s). Groq's rate-limit errors come back at once, so the limit only matters for Gemini, which needed more than 5 s on its free tier.
 - **Gemini thought signatures.** Gemini rejects a request whose earlier tool calls have no `thought_signature`, and calls made by Groq have none. So a fallback in the middle of a tool turn failed with HTTP 400, exactly when Groq was capped. `Lumi.llm_node` adds Google's documented placeholder (`skip_thought_signature_validator`) to every unsigned call; Groq ignores the field. A unit test checks the override is really on the class: a rebase once moved it into another function, where it was dead code.
+- **Some turns need no model.** A table of exact phrases ("thanks", "can you hear me?", "bye") gets a fixed reply in `Lumi.llm_node`: $0, no tokens, voice-only latency. A rule table rather than an ML classifier: embeddings aren't on Groq's free tier, and a local model would add a download and cold start for a handful of phrases.
 - **When every model fails**, Lumi says a fixed sorry line instead of going silent. The greeting is also fixed text, so it plays even when every model is capped.
 - **The eval judge uses the same chain**, so a capped judge doesn't fail an eval whose reply was fine.
 
