@@ -11,6 +11,10 @@ AGENT_NAME = "lumi"  # must match the agentName the web app dispatches
 MAX_SESSION_SECONDS = 10 * 60
 IDLE_TIMEOUT_SECONDS = 3 * 60
 
+# Notes are cut to this many characters in the prompt: enough to tell tasks apart,
+# without paying for long notes on every request.
+NOTES_PREVIEW_CHARS = 60
+
 # Checked 2026-11-11: llama-3.3-70b is no longer offered. gpt-oss-120b made correct tool
 # calls in testing; qwen/qwen3.8-27b was ~0.2 s faster and is the first thing to try for latency.
 GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")

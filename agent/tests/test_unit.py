@@ -1,17 +1,22 @@
 """Fast tests with no LLM calls. Run on every push."""
 
+import json
 import os
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import psycopg
 import pytest
 from conftest import needs_db
-from livekit.agents import llm
+from livekit.agents import ToolError, llm
 from livekit.plugins import groq
 
 import config
 import memory
+import prompt
+import tools
+from agent import Lumi, parse_timezone
 
 SCHEMA = (Path(__file__).parent.parent / "schema.sql").read_text()
 
@@ -200,3 +205,205 @@ async def test_facts_upsert_load_and_forget(db, new_user):
     assert await memory.forget_fact(db, user, "favorite_color") is True
     assert await memory.forget_fact(db, user, "favorite_color") is False
     assert await memory.load_facts(db, user) == {"home_city": "Riyadh"}
+
+
+# --- M1: tools, board push and prompt --------------------------------------
+
+FRIDAY = date(2026, 11, 27)  # a fixed "today", near a month end
+
+
+def fake_context(state):
+    """Just what our tools touch on a RunContext: the session state and the agent."""
+    return SimpleNamespace(
+        userdata=state, session=SimpleNamespace(current_agent=Lumi())
+    )
+
+
+def test_board_payload_matches_the_web_contract():
+    updated = datetime(2026, 11, 27, 9, 30, tzinfo=UTC)
+    tasks = [
+        {
+            "id": 12,
+            "title": "Buy groceries",
+            "body": "",
+            "priority": "high",
+            "target_date": date(2026, 11, 28),
+            "done": False,
+            "updated_at": updated,
+        },
+        {
+            "id": 13,
+            "title": "Call mom",
+            "body": "about Sunday",
+            "priority": "medium",
+            "target_date": None,
+            "done": True,
+            "updated_at": updated,
+        },
+    ]
+    change = {
+        "action": "updated",
+        "task_id": 12,
+        "title": "Buy groceries",
+        "fields": ["priority"],
+    }
+    payload = json.loads(json.dumps(tools.board_payload(tasks, change)))
+    assert payload == {
+        "tasks": [
+            {
+                "id": 12,
+                "title": "Buy groceries",
+                "body": "",
+                "priority": "high",
+                "target_date": "2026-11-28",
+                "done": False,
+                "updated_at": "2026-11-27T09:30:00+00:00",
+            },
+            {
+                "id": 13,
+                "title": "Call mom",
+                "body": "about Sunday",
+                "priority": "medium",
+                "target_date": None,
+                "done": True,
+                "updated_at": "2026-11-27T09:30:00+00:00",
+            },
+        ],
+        "change": change,
+    }
+    assert tools.board_payload([], None) == {"tasks": [], "change": None}
+
+
+def test_instructions_show_today_board_and_facts():
+    tasks = [
+        {
+            "id": 7,
+            "title": "Dentist",
+            "body": "x" * 100,
+            "priority": "high",
+            "target_date": date(2026, 12, 2),
+            "done": False,
+        }
+    ]
+    text = prompt.build_instructions(FRIDAY, tasks, {"home_city": "Riyadh"})
+    assert text.startswith(prompt.INSTRUCTIONS)
+    assert "Today is Friday 2026-11-27." in text
+    assert f"7 | Dentist | high | Wed 2026-12-02 | open | {'x' * 60}\n" in text
+    assert "x" * 61 not in text  # long notes are cut
+    assert "Saved facts: home_city = Riyadh" in text
+
+
+def test_instructions_for_an_empty_board():
+    text = prompt.build_instructions(FRIDAY, [], {})
+    assert "(empty)" in text
+    assert "Saved facts: none" in text
+
+
+@pytest.mark.parametrize(
+    "payload, expected",
+    [
+        ('{"timezone": "Asia/Riyadh"}', "Asia/Riyadh"),
+        ('{"timezone": "Not/AZone"}', "UTC"),
+        ('{"timezone": null}', "UTC"),
+        ("{}", "UTC"),
+        ("", "UTC"),
+        ('"Asia/Riyadh"', "UTC"),
+    ],
+)
+def test_timezone_from_start_payload(payload, expected):
+    assert parse_timezone(payload) == expected
+
+
+@needs_db
+async def test_task_tools_report_what_was_stored_and_refresh_the_prompt(db, new_user):
+    state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+
+    reply = await tools.create_task(
+        ctx, title=" Buy milk ", priority="high", target_date="2026-12-04"
+    )
+    task_id = (await memory.list_tasks(db, state.user_id))[0]["id"]
+    assert reply == (
+        f'Created task {task_id} "Buy milk", high priority, due Friday December 4, not done.'
+    )
+    # No room in tests, so the push is skipped, but the prompt shows the new task.
+    assert f"{task_id} | Buy milk | high | Fri 2026-12-04 | open" in (
+        ctx.session.current_agent.instructions
+    )
+
+    reply = await tools.update_task(
+        ctx, task_id=task_id, remove_target_date=True, done=True
+    )
+    assert "no due date, done" in reply
+
+    with pytest.raises(ToolError, match="not a date"):
+        await tools.update_task(ctx, task_id=task_id, target_date="next friday")
+    with pytest.raises(ToolError, match="no task"):
+        await tools.update_task(ctx, task_id=task_id + 1000, priority="low")
+    # Restating stored values is a no-op, not an error and not a change.
+    reply = await tools.update_task(ctx, task_id=task_id, priority="high", done=True)
+    assert reply.startswith("Nothing needed changing:")
+    with pytest.raises(ToolError, match="no task"):
+        await tools.delete_task(ctx, task_id=task_id + 1000)
+
+    await tools.delete_task(ctx, task_id=task_id)
+    assert "(empty)" in ctx.session.current_agent.instructions
+    assert "Restored" in await tools.restore_task(ctx)
+    with pytest.raises(ToolError, match="no deleted task"):
+        await tools.restore_task(ctx)
+
+
+@needs_db
+async def test_a_repeated_create_returns_the_first_task(db, new_user):
+    # gpt-oss-20b called create_task twice for one request in every eval run.
+    state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    await tools.create_task(ctx, title="Buy milk", priority="high")
+    reply = await tools.create_task(ctx, title="buy milk ", priority="high")
+    assert reply.startswith("Already created")
+    assert len(await memory.list_tasks(db, state.user_id)) == 1
+    # A different title is a different task.
+    await tools.create_task(ctx, title="Buy bread")
+    assert len(await memory.list_tasks(db, state.user_id)) == 2
+
+
+@needs_db
+async def test_an_update_with_no_fields_is_an_error_not_a_success(db, new_user):
+    state = tools.SessionState(user_id=new_user(), db=db, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    await tools.create_task(ctx, title="Call the bank", priority="high")
+    task_id = (await memory.list_tasks(db, state.user_id))[0]["id"]
+    with pytest.raises(ToolError, match="No field"):
+        await tools.update_task(ctx, task_id=task_id)
+
+
+@needs_db
+async def test_board_push_sends_the_contract_payload(db, new_user):
+    sent = []
+
+    async def send_text(text, *, topic):
+        sent.append((topic, json.loads(text)))
+
+    room = SimpleNamespace(local_participant=SimpleNamespace(send_text=send_text))
+    state = tools.SessionState(user_id=new_user(), db=db, room=room, fixed_today=FRIDAY)
+    ctx = fake_context(state)
+    await tools.create_task(ctx, title="Call mom")
+    task_id = sent[0][1]["tasks"][0]["id"]
+    # The model restates the unchanged title; only real changes are reported.
+    await tools.update_task(
+        ctx,
+        task_id=task_id,
+        title="Call mom",
+        priority="high",
+        target_date="2026-11-28",
+    )
+
+    assert [topic for topic, _ in sent] == ["lumi.board", "lumi.board"]
+    assert sent[0][1]["change"] == {
+        "action": "created",
+        "task_id": task_id,
+        "title": "Call mom",
+        "fields": [],
+    }
+    assert sent[1][1]["change"]["fields"] == ["priority", "target_date"]
+    assert sent[1][1]["tasks"][0]["priority"] == "high"

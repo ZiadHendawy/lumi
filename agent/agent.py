@@ -1,5 +1,8 @@
 import asyncio
+import json
 import logging
+import os
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from dotenv import load_dotenv
 from livekit import rtc
@@ -18,32 +21,42 @@ from livekit.agents import (
 from livekit.plugins import silero
 
 import config
+import memory
+import prompt
+import tools
 
 load_dotenv(".env.local")
 logger = logging.getLogger("lumi")
 
-# Placeholder persona. The real one is decided at the end of M0 (open question 4).
-INSTRUCTIONS = """\
-You are Lumi, a warm and quick-witted voice assistant.
-This is a live spoken conversation: you hear the user's voice and they hear yours.
-If they ask whether you can hear them, say yes. Never say you are reading text.
-Reply in one to three short sentences of plain speech: no markdown, lists, emojis
-or symbols. Ask at most one question at a time.
-"""
-# Why spell out "you hear them": the LLM only ever receives a transcript, so without
-# this it truthfully concludes it is reading text and says so (smoke test 2026-11-11).
-
-GREETING = "Greet the user in one short, friendly sentence and ask how you can help."
-
 
 class Lumi(Agent):
     def __init__(self) -> None:
-        super().__init__(instructions=INSTRUCTIONS)
+        # Starts with the bare persona; tools.refresh_instructions adds the board,
+        # calendar and facts once we know who the user is.
+        super().__init__(
+            instructions=prompt.INSTRUCTIONS,
+            tools=[
+                tools.create_task,
+                tools.update_task,
+                tools.delete_task,
+                tools.restore_task,
+            ],
+        )
 
     def llm_node(self, chat_ctx, tools, model_settings):
         # Runs before every LLM request; see config.sign_tool_calls_for_gemini for why.
         config.sign_tool_calls_for_gemini(chat_ctx)
         return Agent.default.llm_node(self, chat_ctx, tools, model_settings)
+
+
+def parse_timezone(payload: str) -> str:
+    """The IANA timezone from the lumi.start payload, or UTC if it's missing or bad."""
+    try:
+        name = json.loads(payload)["timezone"]
+        ZoneInfo(name)  # raises if the name is unknown
+        return name
+    except (ValueError, TypeError, KeyError, ZoneInfoNotFoundError):
+        return "UTC"
 
 
 def prewarm(proc: JobProcess) -> None:
@@ -57,6 +70,10 @@ server = AgentServer(setup_fnc=prewarm)
 @server.rtc_session(agent_name=config.AGENT_NAME)
 async def entrypoint(ctx: JobContext) -> None:
     ctx.log_context_fields = {"room": ctx.room.name}
+
+    # Neon scales to zero, and waking it adds ~0.5 s to the first query. Start now so
+    # that happens while the room connects, not on the user's first request.
+    db_connecting = asyncio.create_task(memory.connect(os.environ["DATABASE_URL"]))
 
     session = AgentSession(
         stt=config.build_stt(),
@@ -92,16 +109,32 @@ async def entrypoint(ctx: JobContext) -> None:
         if ev.new_state == "away":
             ctx.shutdown(reason="user idle")
 
+    await ctx.connect()
+    # The browser's participant identity is its anonymous user id.
+    participant = await ctx.wait_for_participant()
+    state = tools.SessionState(
+        user_id=participant.identity, db=await db_connecting, room=ctx.room
+    )
+    ctx.add_shutdown_callback(state.db.close)
+    session.userdata = state
+
+    # Fill the board on screen now, before the user clicks Start.
+    await tools.push_board(state, change=None)
+    agent = Lumi()
+    await tools.refresh_instructions(agent, state)
+
     # The browser connects on page load to hide the cold start, but it can't play
     # audio until the user clicks. It calls this RPC on click, so the greeting is heard.
-    async def on_start(_: rtc.RpcInvocationData) -> str:
-        session.generate_reply(instructions=GREETING)
+    async def on_start(data: rtc.RpcInvocationData) -> str:
+        state.timezone = parse_timezone(data.payload)
+        # "Today" and the calendar depend on the user's timezone.
+        await tools.refresh_instructions(agent, state)
+        session.generate_reply(instructions=prompt.GREETING)
         return "ok"
 
-    await session.start(agent=Lumi(), room=ctx.room)
-    await ctx.connect()
-    # Only possible once connected: the local participant doesn't exist before that.
-    # The browser shows Start only after the agent has joined, so a click can't beat this.
+    await session.start(agent=agent, room=ctx.room)
+    # The browser shows Start once the session is running (agent state "listening"),
+    # so a click can't arrive before this is registered.
     ctx.room.local_participant.register_rpc_method("lumi.start", on_start)
 
     # Hard cap per visitor, also covers someone who loads the page and never clicks Start.

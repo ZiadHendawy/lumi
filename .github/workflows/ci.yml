@@ -48,6 +48,8 @@ jobs:
     env:
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      # Task and fact evals run against the Neon test branch, one fresh user each.
+      TEST_DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
     defaults:
       run:
         working-directory: agent
