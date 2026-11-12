@@ -1,7 +1,7 @@
 // Pure helpers for the /stats page, with no React and no network, so each one can be
 // tested on its own (lib/stats.test.ts).
 
-// The free-plan caps, from TECH_STACK.md. Groq's were measured on our key
+// The free-plan caps, from docs/TECH_STACK.md. Groq's were measured on our key
 // (2026-11-12); Gemini's are third-party figures, so the page labels them "about".
 // Keys are the model names the agent records (config.py).
 export type LlmLimits = {
@@ -86,7 +86,7 @@ export function summarize(values: (number | null)[]): StageSummary {
 // --- Cost at list prices -------------------------------------------------------
 // Lumi runs on free plans, so these are what the same traffic would cost at each
 // provider's pay-as-you-go price. USD, checked on PRICES_CHECKED; the table with
-// sources is in TECH_STACK.md §15.
+// sources is in docs/TECH_STACK.md §15.
 export const PRICES_CHECKED = '2026-11-12';
 
 export const PRICES = {

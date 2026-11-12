@@ -530,7 +530,7 @@ async def test_fact_tools_normalise_keys(db, new_user):
 
 # --- M1: web search, against a local fake of Tavily ---------------------------
 # Replaced the weather tests on 2026-11-12, when web search replaced the weather tool
-# (the user's call, recorded in PROJECT_PLAN.md's decision log).
+# (the user's call, recorded in docs/PROJECT_PLAN.md's decision log).
 
 IKEA_ANSWER = "IKEA Riyadh is open from 10 am to 11 pm every day."
 

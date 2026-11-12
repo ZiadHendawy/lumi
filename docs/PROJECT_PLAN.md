@@ -58,11 +58,11 @@
 
 ## Simplicity rules
 - **Use the framework, don't wrap it.** No custom registries, adapters or base classes on top of LiveKit. Tools are plain `@function_tool` functions, and providers are configured in one place.
-- **Few files, one job each.** The agent fits in about 5 files and the web app in about 4. Keep each file small enough to read in one sitting.
+- **Few files, one job each.** The agent is five modules (`agent`, `config`, `tools`, `memory`, `prompt`) plus a latency benchmark script; the web app has one component per part of the page and pure, tested helpers in `lib/`. Keep each file small enough to read in one sitting.
 - **No ORM.** Use plain SQL in one `memory.py` and one `schema.sql`.
 - **Use the starters as a reference.** The Python agent starter is small, so we keep it and trim it. The React starter is a big app, so we write a **minimal frontend** with LiveKit's React hooks and borrow only the token route.
 - **Comments explain *why*, not *what*.**
-- **`docs/CODE_MAP.md`:** one paragraph per file, plus the life of one voice turn. This doubles as onboarding for new contributors.
+- **`docs/CODE_MAP.md`:** one paragraph per file, plus the life of one voice turn. It is the guided tour for a reader new to the code.
 
 ## Architecture
 Comparisons and reasoning for each choice: [TECH_STACK.md](TECH_STACK.md).
@@ -143,10 +143,16 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 "Done" here means the code, tests and docs are written and the unit tests pass. Everything is merged and deployed. Still left: the full voice smoke check on the live URL and a phone (docs/SMOKE_TEST.md), and a full eval run once the quota allows; the polish PRs (#21–#38) shipped without CI evals. The live-audio run on 2026-11-12 was against a local agent (docs/SMOKE_TEST.md). CI evals were red on 2026-11-12 because the whole LLM chain was at its daily quota, not because of code.
 
 **M4 doc tidy-up (reader-facing).** The planning docs stay in the repo, because they show the plan came before the code. We don't add a second PRD next to them, since two plans drift apart. Instead:
-- Rewrite `README.md` as the front door: what Lumi is, the live URL, how it works, the deep dive, and a "How I planned this" link to the docs below.
-- Move `PROJECT_PLAN.md` and `TECH_STACK.md` into `docs/`, and fix every link to them (README, CLAUDE.md, CODE_MAP, and each other).
-- Reword the lines written for us rather than an outside reader (CLAUDE.md, CODE_MAP).
-- Close or answer every open question in the plan, so a new reader doesn't see unresolved items.
+- ~~Rewrite `README.md` as the front door~~ **Done:** what Lumi is, the live URL, a tour of the page, how it works, the deep dive, and "How it was planned" pointing here.
+- ~~Move `PROJECT_PLAN.md` and `TECH_STACK.md` into `docs/`~~ **Done 2026-11-13**, with every link fixed (README, CLAUDE.md, code comments).
+- ~~Reword the lines written for us rather than an outside reader~~ **Done 2026-11-13** (CLAUDE.md's simplicity rule, the CODE_MAP line, the file-count rule that no longer matched the code).
+- ~~Close or answer every open question~~ **Done 2026-11-13.** Repo visibility moved to the launch checklist below, since it is decided at launch.
+
+**Launch checklist.**
+- [ ] Voice smoke check on the live URL, desktop and phone (docs/SMOKE_TEST.md, "Polish" section).
+- [ ] Demo video: 3–5 minutes, also the backup if the live demo hits a cold start or a quota.
+- [ ] Repo visibility: make the repo public.
+- [ ] Share the live URL, the repo and the demo video.
 
 **M2 deep dives: one theme, *voice control you can trust*.** A voice-only edit has three ways to fail. It's slow, so you wait. It's wrong, so the wrong task changes. Or it's invisible, so you can't tell what happened. We take on one failure mode per angle:
 1. **Correctness:** code owns state, and the model only maps words to tool calls. Ground truth sits in the prompt (the current board and a 14-day calendar). Priority is an enum in both the tool schema and a SQL `CHECK`. Dates are validated, every query is scoped to the user, and the spoken confirmation is built from the row actually stored. Deletes are soft, with undo. Measured by the eval suite's pass rate, including dates with and without the calendar.
@@ -178,5 +184,5 @@ Answered on 2026-11-12 (reasons in the decision log above):
 5. ~~Languages~~: English only.
 6. ~~Identity~~: anonymous per-browser UUID.
 7. ~~Providers~~: no paid keys. Free tiers only.
-8. **Repo visibility:** public or private? **Still open; decided at launch.**
+8. ~~Repo visibility~~: private while building; public at launch (see the launch checklist).
 9. ~~Memory scope~~: explicit facts plus the task board. No semantic recall.

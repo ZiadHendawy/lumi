@@ -34,7 +34,7 @@ The model only maps words to tool calls. Code owns the data: the agent is the on
 ```
 agent/   Python LiveKit Agents worker (runs on LiveKit Cloud)
 web/     Next.js app + /api/token route (runs on Vercel)
-docs/    deep dives, code map, smoke checklist
+docs/    the plan, the stack choices, deep dives, code map, smoke checklist
 ```
 
 ## Read next
@@ -43,8 +43,8 @@ docs/    deep dives, code map, smoke checklist
 |---|---|
 | [docs/DEEP_DIVE.md](docs/DEEP_DIVE.md) | One theme, *voice control you can trust*, from three angles: [latency](docs/DEEP_DIVE.md#latency) (slow), [correctness](docs/DEEP_DIVE.md#correctness) (wrong), [voice-to-screen sync](docs/DEEP_DIVE.md#voice-to-screen-sync) (invisible). Measured results, what didn't work, how to reproduce. |
 | [docs/CODE_MAP.md](docs/CODE_MAP.md) | One paragraph per file, the agent-browser contract, and the life of one voice turn |
-| [PROJECT_PLAN.md](PROJECT_PLAN.md) | Milestones, the decision log (why each choice), risks |
-| [TECH_STACK.md](TECH_STACK.md) | Options compared for each layer, free-tier limits as measured |
+| [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) | **How it was planned:** the plan written before the code, milestones, the decision log (why each choice, dated), risks |
+| [docs/TECH_STACK.md](docs/TECH_STACK.md) | Options compared for each layer, free-tier limits as measured, list prices for the cost model |
 | [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md) | The 5-minute manual voice check, and its log |
 
 ## Run locally
