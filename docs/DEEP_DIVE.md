@@ -317,7 +317,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 | Captions | `userCaption` joins every user segment since Lumi last spoke (#15). Lumi's current line shows below. | A misheard word is easy to spot. |
 | Reduced motion | `prefers-reduced-motion` swaps the keyframes for gentler ones | Same information, less movement. |
 | Tool activity | `tool_execution_updated` → `lumi.activity`: the lantern says what Lumi is doing, and a card being searched breathes light (label after 0.4 s, so fast tools don't flash) | A 1–3 s web search is no longer a silent pause. It's the earliest honest signal: the model has decided, the tool hasn't run. |
-| X-ray panel and session receipt | Press X: the last reply's stages, the model that answered, the screen lead (agent and browser), and the prompt as the model reads it. End shows a receipt: replies, median time to voice, changes and undos, median screen lead. | The three deep dives, visible while you use the app instead of only in logs. |
+| X-ray panel | Press X: the last reply's stages, the model that answered, the screen lead (agent and browser), this session's medians (time to voice, screen lead, changes and undos, models), and the prompt as the model reads it. Opens only on request; the end-of-session card speaks in the user's terms instead ("3 tasks added · 2 done"). | The three deep dives, visible while you use the app instead of only in logs. |
 | Read-along | Lumi's caption highlights its newest word, and a card lights up while Lumi says its title (`spokenTaskIds` on the audio-synced transcript) | When Lumi reads out your day, your eyes follow it on the board. Limit: Aura aligns per sentence, so the word timing is LiveKit's estimate from the speech rate, not exact; a paraphrased title doesn't light up. |
 | Memory shelf | The facts ride in every board push; `changedFacts` lights only the chip that changed | "Remembers you" is visible too, not only spoken, and it shows the stored value, not the model's claim. |
 | Source chips | `splitLinks` turns each http(s) link in a card's notes into a chip naming the site (new tab, full URL on hover); everything else stays plain text | Lumi says "according to ikea.com"; the card shows the same site, one tap from the page. Notes come from the web, so nothing in them is rendered as HTML. |
@@ -350,7 +350,7 @@ One end-to-end run with real audio on 2026-11-12: Playwright drove real Chrome, 
 1. **Measure on the deployed URL**, with the agent in `us-east` next to Neon.
 2. **Put the live-audio harness in the repo** and run it nightly. Today it is a one-off script on the dev Mac.
 3. ~~**A "working on it" state on the card** while a slow tool runs~~ **Done** (tool activity, above).
-4. ~~**Browser-side timing in production**~~ **Done:** the browser measures each changed board arriving against Lumi's state turning "speaking", and shows it in the X-ray panel and the session receipt. It reads the agent's state attribute rather than the audio itself, so it is close but not exact.
+4. ~~**Browser-side timing in production**~~ **Done:** the browser measures each changed board arriving against Lumi's state turning "speaking", and shows it in the X-ray panel. It reads the agent's state attribute rather than the audio itself, so it is close but not exact.
 5. **Highlight the words that changed in the notes**, not the whole notes area, for long notes from web search.
 
 ### How to reproduce

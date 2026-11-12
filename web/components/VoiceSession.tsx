@@ -13,7 +13,7 @@ import {
   useTrackVolume,
 } from '@livekit/components-react';
 import Board from '@/components/Board';
-import { SessionReceipt, XRay } from '@/components/XRay';
+import { XRay } from '@/components/XRay';
 import {
   type Activity,
   type Facts,
@@ -33,7 +33,7 @@ import {
   suggestions,
   userCaption,
 } from '@/lib/board';
-import { type Turn, parseTurn } from '@/lib/turns';
+import { EMPTY_TALLY, type Tally, type Turn, addToTally, parseTurn, tallyLines } from '@/lib/turns';
 import { getUserId } from '@/lib/userId';
 
 const tokenSource = TokenSource.endpoint('/api/token');
@@ -50,10 +50,9 @@ type BoardState = {
   factsChanged: { keys: string[]; seq: number; text: string[] };
   seq: number;
   live: boolean;
-  // This session's tally for the receipt. Kept here so the updater below can count from
-  // the previous board, and stays a pure function of it.
-  changes: number;
-  undos: number;
+  // What this session got done, for the card shown when it ends. Kept here so the updater
+  // below can count from the previous board, and stays a pure function of it.
+  tally: Tally;
 };
 
 type LanternState =
@@ -104,8 +103,7 @@ export default function VoiceSession() {
       factsChanged: { keys: [], seq: 0, text: [] },
       seq: 0,
       live: false,
-      changes: 0,
-      undos: 0,
+      tally: EMPTY_TALLY,
     };
   });
   const [turns, setTurns] = useState<Turn[]>([]); // this session's replies, from the agent
@@ -137,7 +135,6 @@ export default function VoiceSession() {
               text: describeFactChanges(prev.facts, payload.facts),
             }
           : prev.factsChanged;
-        const factChanges = prev.live ? describeFactChanges(prev.facts, payload.facts).length : 0;
         return {
           tasks: payload.tasks,
           facts: payload.facts,
@@ -145,8 +142,8 @@ export default function VoiceSession() {
           factsChanged,
           seq,
           live: true,
-          changes: prev.changes + (payload.change ? 1 : 0) + factChanges,
-          undos: prev.undos + (payload.change?.action === 'restored' ? 1 : 0),
+          // The first live push replaces the cached copy, so it isn't counted as a change.
+          tally: prev.live ? addToTally(prev.tally, payload.change, payload.tasks, prev.facts, payload.facts) : prev.tally,
         };
       });
     });
@@ -230,10 +227,10 @@ export default function VoiceSession() {
   async function wakeAgain() {
     setPhase('idle');
     setError(null);
-    // A new session starts a new receipt.
+    // A new session starts a new tally.
     setTurns([]);
     setLeads([]);
-    setBoard((prev) => ({ ...prev, changes: 0, undos: 0 }));
+    setBoard((prev) => ({ ...prev, tally: EMPTY_TALLY }));
     await session.end();
     await session.start({ tracks: { microphone: { enabled: false } } });
   }
@@ -314,11 +311,11 @@ export default function VoiceSession() {
       >
         X-ray
       </button>
-      {xray && <XRay turns={turns} leads={leads} prompt={prompt} onClose={() => setXray(false)} />}
+      {xray && <XRay turns={turns} leads={leads} tally={board.tally} prompt={prompt} onClose={() => setXray(false)} />}
 
       <div className="dock" data-state={state}>
         {state === 'ended' ? (
-          <SessionReceipt turns={turns} leads={leads} changes={board.changes} undos={board.undos} />
+          <SessionEnd tally={board.tally} />
         ) : (
           <Captions
             session={session}
@@ -361,6 +358,20 @@ const LANTERN_LABELS: Partial<Record<LanternState, string>> = {
 };
 
 // Its own component because the volume updates ~30 times a second; only the lantern re-renders, not the board.
+// Shown when a session ends, in the user's words: what got done, and that it's kept. The
+// timings and models that used to be here are engineering numbers; they live in the X-ray panel.
+function SessionEnd({ tally }: { tally: Tally }) {
+  const lines = tallyLines(tally);
+  if (lines.length === 0) return null;
+  return (
+    <section className="receipt" aria-label="This session">
+      <h2 className="receipt-title">This session</h2>
+      <p className="receipt-lines">{lines.join(' · ')}</p>
+      <p className="receipt-note">Saved to your board for next time.</p>
+    </section>
+  );
+}
+
 function Lantern(props: { state: LanternState; track?: TrackReference; onClick?: () => void }) {
   const volume = useTrackVolume(props.track);
   // Speech sits around 0.1-0.4; stretch it so a normal voice visibly moves the flame.

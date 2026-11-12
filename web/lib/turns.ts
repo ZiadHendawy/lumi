@@ -1,5 +1,7 @@
-// Where the time went in each spoken reply (the `lumi.turn` stream), and the numbers the
-// X-ray panel and the end-of-session receipt show. Pure functions, tested in turns.test.ts.
+// This session in numbers. Where the time went in each spoken reply (the `lumi.turn` stream),
+// for the X-ray panel; and what the user got done, in their own words, for the card shown when
+// a session ends. Pure functions, tested in turns.test.ts.
+import type { Change, Facts, Task } from './board';
 
 // One reply's stages in seconds, as the agent measured them (agent.py `log_turn_latency`,
 // the same row it saves to turn_metrics). A stage that didn't happen is null.
@@ -84,4 +86,56 @@ export function sessionSummary(turns: Turn[], leads: number[], changes: number, 
     medianLead: median(leads),
     models,
   };
+}
+
+// --- What the user got done this session, for the card shown when it ends. Counted in the
+// user's terms (added, done, remembered), not the engineering ones: timings and models are for
+// the X-ray panel, which only opens on request.
+
+export type Tally = {
+  added: number;
+  done: number;
+  edited: number;
+  deleted: number;
+  restored: number;
+  remembered: number; // facts that are new or hold a new value
+  forgot: number;
+};
+
+export const EMPTY_TALLY: Tally = { added: 0, done: 0, edited: 0, deleted: 0, restored: 0, remembered: 0, forgot: 0 };
+
+// One board push: the task change it carried (if any) and the facts either side of it.
+// `after` is the board the push brought, to tell "marked done" from "reopened".
+export function addToTally(tally: Tally, change: Change | null, after: Task[], factsBefore: Facts, factsAfter: Facts): Tally {
+  const next = { ...tally };
+  if (change?.action === 'created') next.added++;
+  else if (change?.action === 'deleted') next.deleted++;
+  else if (change?.action === 'restored') next.restored++;
+  else if (change?.action === 'updated') {
+    const task = after.find((t) => t.id === change.task_id);
+    if (change.fields.includes('done') && task?.done) next.done++;
+    else next.edited++;
+  }
+  next.remembered += Object.keys(factsAfter).filter((key) => factsBefore[key] !== factsAfter[key]).length;
+  next.forgot += Object.keys(factsBefore).filter((key) => !(key in factsAfter)).length;
+  return next;
+}
+
+// "3 tasks added", "1 done", ... Only what happened, in the order a user thinks of it.
+export function tallyLines(tally: Tally): string[] {
+  const lines: [number, string, string][] = [
+    [tally.added, 'task added', 'tasks added'],
+    [tally.done, 'done', 'done'],
+    [tally.edited, 'task changed', 'tasks changed'],
+    [tally.deleted, 'deleted', 'deleted'],
+    [tally.restored, 'brought back', 'brought back'],
+    [tally.remembered, 'new thing remembered', 'new things remembered'],
+    [tally.forgot, 'thing forgotten', 'things forgotten'],
+  ];
+  return lines.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);
+}
+
+// Every change in the tally, for the X-ray panel's engineering line ("each read back from the database").
+export function tallyTotal(tally: Tally): number {
+  return Object.values(tally).reduce((sum, n) => sum + n, 0);
 }

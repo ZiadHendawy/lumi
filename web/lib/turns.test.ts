@@ -1,7 +1,19 @@
 // Unit tests for the turn timings helpers (X-ray panel, session receipt). Run with `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { type Turn, median, parseTurn, seconds, sessionSummary, shortModel } from './turns.ts';
+import {
+  EMPTY_TALLY,
+  type Turn,
+  addToTally,
+  median,
+  parseTurn,
+  seconds,
+  sessionSummary,
+  shortModel,
+  tallyLines,
+  tallyTotal,
+} from './turns.ts';
+import type { Change, Task } from './board.ts';
 
 function turn(e2e: number, model: string | null = 'openai/gpt-oss-120b'): Turn {
   return {
@@ -53,4 +65,28 @@ test('sessionSummary counts replies and lists each model once, first one first',
 test('shortModel drops the provider prefix', () => {
   assert.equal(shortModel('openai/gpt-oss-120b'), 'gpt-oss-120b');
   assert.equal(shortModel('gemini-flash-lite-latest'), 'gemini-flash-lite-latest');
+});
+
+const task = (id: number, done = false): Task => ({ id, title: `Task ${id}`, body: '', priority: 'medium', target_date: null, done, updated_at: '' });
+const change = (action: Change['action'], fields: string[] = []): Change => ({ action, task_id: 1, title: 'Task 1', fields });
+
+test('addToTally counts each push in the user\'s terms', () => {
+  let t = addToTally(EMPTY_TALLY, change('created'), [task(1)], {}, {});
+  t = addToTally(t, change('updated', ['done']), [task(1, true)], {}, {});
+  t = addToTally(t, change('updated', ['done']), [task(1, false)], {}, {}); // reopened: a change, not a done
+  t = addToTally(t, change('updated', ['priority']), [task(1)], {}, {});
+  t = addToTally(t, change('deleted'), [], {}, {});
+  t = addToTally(t, change('restored'), [task(1)], {}, {});
+  t = addToTally(t, null, [task(1)], { city: 'Riyadh', color: 'red' }, { color: 'blue', pet: 'cat' });
+  assert.deepEqual(t, { added: 1, done: 1, edited: 2, deleted: 1, restored: 1, remembered: 2, forgot: 1 });
+  assert.equal(tallyTotal(t), 9);
+});
+
+test('tallyLines names only what happened, singular or plural', () => {
+  assert.deepEqual(tallyLines(EMPTY_TALLY), []);
+  assert.deepEqual(tallyLines({ ...EMPTY_TALLY, added: 3, done: 1, remembered: 1 }), [
+    '3 tasks added',
+    '1 done',
+    '1 new thing remembered',
+  ]);
 });

@@ -12,8 +12,8 @@ The look is "the lantern board": a dark board where a card's priority is how bri
 - **Source chips:** links from a web search show as small chips naming the site.
 - **Read-along:** the caption highlights the word being spoken, and a card lights up while Lumi says its title.
 - **Tool activity:** the lantern says "Searching the web…" during a search, and the card being searched breathes.
-- **X-ray** (press X) shows the last reply's timing stages, the model that answered, how far the screen led the voice, and the prompt exactly as the model reads it.
-- **Session receipt:** when you end a session, one card sums it up: replies, median time to voice, changes and undos, screen lead.
+- **X-ray** (press X, or the button top right) is for anyone curious how it works: the last reply's timing stages, the model that answered, how far the screen led the voice, this session's medians, and the prompt exactly as the model reads it. It only opens on request.
+- **End of a session:** one line in your words: "3 tasks added · 2 done · 1 new thing remembered". The engineering numbers for the session (median time to voice, screen lead, models) are in X-ray.
 - **Connections:** download your dated tasks as `.ics` or add one to Google Calendar, with no sign-in. Planned integrations are listed honestly.
 - **End of the day:** when everything due today is done, "All of today's lanterns are out."
 - **Keys:** Space talks or mutes, Esc ends, X opens X-ray. Before you speak, the dock suggests phrases that fit your board.
