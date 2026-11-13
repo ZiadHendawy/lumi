@@ -54,7 +54,7 @@ docs/    the plan, the stack choices, deep dives, code map, smoke checklist
 | Doc | What's in it |
 |---|---|
 | [docs/DEEP_DIVE.md](docs/DEEP_DIVE.md) | One theme, *voice control you can trust*, from three angles: [latency](docs/DEEP_DIVE.md#latency) (slow), [correctness](docs/DEEP_DIVE.md#correctness) (wrong), [voice-to-screen sync](docs/DEEP_DIVE.md#voice-to-screen-sync) (invisible). Measured results, what didn't work, how to reproduce. |
-| [docs/CODE_MAP.md](docs/CODE_MAP.md) | One paragraph per file, the agent-browser contract, and the life of one voice turn |
+| [docs/CODE_MAP.md](docs/CODE_MAP.md) | The guided tour: diagrams of the system and one voice turn, a section per file, the agent-browser contract, and where to look to change something |
 | [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) | **How it was planned:** the plan written before the code, milestones, the decision log (why each choice, dated), risks |
 | [docs/TECH_STACK.md](docs/TECH_STACK.md) | Options compared for each layer, free-tier limits as measured, list prices for the cost model |
 | [docs/SMOKE_TEST.md](docs/SMOKE_TEST.md) | The 5-minute manual voice check, and its log |
@@ -111,5 +111,6 @@ One PR per related unit of change (for example "tasks SQL", "task tools and boar
 - **Agent:** #7 → #9 → #11 → #12 → #13 → #14 → #16 → #17 → #18 → #19
 - **Web:** #2 → #3 → #4 → #5 → #15
 - **Polish, after M3** (one PR each, merged as they were done): #21 full notes, #22–#23 /stats, #24 memory shelf, #25 lantern icon, #26 cost model, #27 tool activity, #28 X-ray, #29 calendars and Connections, #30 read-along, #31 keys and suggestions, #32 fixed replies, #33 night strip and source chips, #34 end of the day, #35 plain end-of-session card, #36 Connections tidy-up, #37 editable memory, #38 clickable calendar and month view.
+- **Before launch:** #39–#40 doc audit and tidy-up, #41 README, #42 web text can't delete (found by the prompt-injection eval), #43 code map as a guided tour.
 
 Everything runs on free tiers.

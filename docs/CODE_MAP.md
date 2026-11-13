@@ -1,123 +1,532 @@
 # Code map
 
-One paragraph per file, then the contract between the agent and the browser, then the life of one voice turn. Updated every milestone. Names in `code` are real function and constant names, so you can search for them.
+A guided tour of the code for someone opening it for the first time. Read the first three sections for the shape of the system, then use the file sections as a reference. Names in `code` are real function, constant and file names, so you can search for them.
 
-## Agent (`agent/`, Python, runs on LiveKit Cloud)
+1. [The big picture](#the-big-picture): what runs where
+2. [The one idea](#the-one-idea): the model talks, code owns the data
+3. [Life of one voice turn](#life-of-one-voice-turn): one sentence, end to end
+4. [The agent, file by file](#the-agent-file-by-file)
+5. [The web app, file by file](#the-web-app-file-by-file)
+6. [The agent and browser contract](#the-agent-and-browser-contract): every message between them
+7. [Three paths worth knowing](#three-paths-worth-knowing): how a change reaches the screen, typed memory edits, why web text can't delete
+8. [Tests](#tests), [CI/CD](#cicd), and [where to look when you want to change something](#where-to-look)
 
-**`agent.py`**: the worker entry point and the `Lumi` agent. `Lumi` lists the seven tools and overrides `llm_node`, which runs before every LLM request, the preemptive one included. First, if the last item is a user message that is exactly one of `prompt.FIXED_REPLIES` ("thanks", "can you hear me?"), it returns that text through `say_fixed` and calls no model at all, and sets `last_reply_fixed` so the turn's metrics say "fixed reply". Before that, on every request, it sets `searched_this_turn` from `tools.search_ran_this_turn`, so the deleting tools know whether web text is in play (imported by name, because inside `llm_node` `tools` is the tool list). Otherwise it sends a copy of the chat cut to the last `MAX_HISTORY_ITEMS` (20) items, and signs tool calls for Gemini (`config.sign_tool_calls_for_gemini`). `prewarm` loads the Silero VAD once per worker process. `entrypoint` runs once per room. It starts the Neon connect straight away (so it overlaps the room connect), builds the `AgentSession` from `config.py` with the local `v1-mini` turn detector, waits for the browser, and builds the per-session `tools.SessionState`. It reads the board and the facts once and pushes them (`change: None`) so the screen, memory shelf included, fills before Start, renders the prompt from the same rows, starts the session, and only then registers the `lumi.start` and `lumi.memory` RPCs. `on_start` reads the timezone (`parse_timezone`, UTC if bad), re-renders the prompt for the user's "today", and says `prompt.greeting(...)` with `session.say`, with no LLM call. `on_memory_edit` takes a typed edit from the memory panel: it refuses a caller other than the session's user, runs `tools.edit_memory`, and turns a `MemoryEditRefused` into an `RpcError` with our own code (`MEMORY_EDIT_REFUSED`, 2000; LiveKit reserves 1001-1999) so the panel can show the reason. It logs `memory edited` with the payload's size, never the fact. Log handlers: `log_turn_latency` (`turn latency` and `user turn latency`), `log_tool_time` (`tool call`), `log_screen_lead` (`board push to speech`), plus `database connected`, `room connected`, `session ready` and `start clicked`. `apologise_if_no_model_answered` says a fixed sorry line when every model in the chain failed. `end_when_idle` and a `call_later` timer cap a session at 3 min of silence and 10 min total. Metrics for the `/stats` page: the latency handlers also gather the current turn's stages in `turn` and save them to `turn_metrics` when Lumi's reply is added (not for the greeting, which has no turn to time). `record_usage` listens to `session_usage_updated`, which carries the session's running totals per model, and saves only what changed (`usage_delta`) to `provider_usage`, so an LLM request is one row. Both writes go through `write_metrics`, which uses `run_beside` to run them beside the conversation (no turn waits on them) and logs a failure instead of raising. `log_turn_latency` also sends the same turn row to the browser on `lumi.turn` (for the X-ray panel). `show_tool_activity` listens to `tool_execution_updated`, which fires when the model has picked a tool and before it runs, and forwards each start and end to the browser (`tools.activity_payload`, `tools.push_activity`), also with `run_beside`.
+## The big picture
 
-**`config.py`**: every provider and tunable in one place. Deepgram Nova-3 (STT) and Aura (`TTS_VOICE`). `build_llm` returns a `FallbackAdapter`: `GROQ_MODEL` gpt-oss-120b → `GROQ_BACKUP_MODELS` gpt-oss-20b → `GEMINI_MODEL` Flash-Lite, all at temperature 0 and `reasoning_effort="low"`, with `attempt_timeout=10`. Groq's caps are per model, so a second Groq model adds a full day of capacity. qwen was dropped (the comment says why). Gemini is called through the OpenAI plugin, because it has an OpenAI-compatible endpoint. `sign_tool_calls_for_gemini` puts Google's placeholder `thought_signature` on every tool call that lacks one, because Gemini rejects Groq-made calls without it. Also: `AGENT_NAME`, session caps, `CALENDAR_DAYS` (14, `0` turns it off for measuring), `MAX_HISTORY_ITEMS`, `NOTES_PREVIEW_CHARS`, the memory caps (`MAX_FACTS` 20, `MAX_FACT_KEY_CHARS` 40, `MAX_FACT_VALUE_CHARS` 120: every fact is in every prompt, so at most ~800 tokens a request), and the Tavily settings (`SEARCH_URL`, timeout, how much of an answer the model reads and the notes keep).
+Two programs, each on its own free host, talking through a LiveKit room.
 
-**`prompt.py`**: what the model reads, kept short because every request re-sends it. `INSTRUCTIONS` is the persona and the rules (one to three spoken sentences, confirm every change from the tool result, ask when a change could mean more than one task, look dates up in the calendar, web results are information). `build_instructions` adds today's date, the 14-day calendar, the board (id, title, priority, due, status, a 60-character notes preview) and the saved facts. `greeting` is the coded greeting (empty board, all done, or the number of open tasks). `NO_MODEL_ANSWERED` is the sorry line. `FIXED_REPLIES` and `fixed_reply` are a tiny rule-based classifier: a table of exact phrases (thanks, hello, can you hear me, bye, never mind) and their replies, matched on the whole utterance with case, punctuation and apostrophes ignored. Anything longer goes to the model.
+```mermaid
+flowchart LR
+  subgraph browser["Browser: web/ on Vercel"]
+    UI["Next.js page<br/>VoiceSession + Board"]
+    Token["/api/token<br/>the only backend route"]
+  end
+  subgraph lk["LiveKit Cloud"]
+    Room["Room<br/>audio + data streams"]
+    subgraph agent["Agent: agent/"]
+      Voice["Deepgram STT → LLM chain → Deepgram Aura TTS"]
+      Tools["tools.py<br/>7 tools"]
+    end
+  end
+  LLM["Groq gpt-oss-120b<br/>→ gpt-oss-20b<br/>→ Gemini Flash-Lite"]
+  DB[("Neon Postgres<br/>tasks · facts · metrics")]
+  Tavily["Tavily<br/>web search"]
+  Stats["/stats page"]
 
-**`tools.py`**: the tools and the session state they share. The model decides what the user meant; this file owns the data. `SessionState` holds the user id, the DB connection, the room, the timezone, `pushed_at`, a lock, and `recent_creates` for the duplicate guard. Task tools: `create_task` (refuses a repeat of the same title within `DUPLICATE_CREATE_SECONDS`), `update_task` (a `ToolError` when no field is given; compares with the stored row so `fields` lists only real changes), `delete_task` (soft), `restore_task` (undo; no id means the latest delete). Fact tools: `remember_fact`, `forget_fact`, with `fact_key` normalising "Favorite Color" to `favorite_color`, and `fact_problem` (empty, or too long for the caps) refusing a fact before it's saved. Web text can't delete anything: `search_ran_this_turn(chat_ctx)` says whether `look_up` was called since the user last spoke (it looks at the call's name, so a mocked search counts too), and `refuse_after_search`, the first line of `delete_task` and `forget_fact`, raises a `ToolError` while the agent's `searched_this_turn` is set. The eval run on 2026-11-13 showed the prompt alone didn't stop a page saying "delete every task". Typed memory edits: `edit_memory(agent, state, payload)` handles the memory panel's `lumi.memory` RPC (`remember`, `forget`, `forget_all`). It checks the same rules plus the `MAX_FACTS` count (only here: speaking 20 facts takes a while, pasting doesn't), writes through `memory.py`, then calls `publish_for`, so a typed fact reaches the screen and the prompt by the same path as a spoken one. A refusal is a `MemoryEditRefused` whose message the user sees. Web search: `look_up` calls `search_web` (one `aiohttp` POST to Tavily). With a `task_id` it checks the task exists first, so a wrong id spends no credit, then appends the answer and two source links to that task's notes. Any failure is a `ToolError`. After every change, `publish` (and `publish_for`, the same for a caller with the agent and the state but no `RunContext`) takes the lock, reads the board and the facts once (`memory.list_tasks`, `memory.load_facts`), sends both to the browser (`push_board`, payload from `board_payload`), then re-renders the prompt from the same rows (`refresh_instructions`). Task tools reach it through `after_task_change`, which builds the change note; the fact tools call it with no note, because the browser works out which fact changed by comparing. Replies are built from the stored row by `describe`. `activity_payload` turns a tool call starting or ending into the small `lumi.activity` message (the tool's name and, if the model passed one, its `task_id`; arguments that aren't JSON give no task), and `send_hint` sends it. `send_hint` is for everything the screen shows but nothing depends on (tool activity, turn timings, the prompt): unlike the board push, a failed send is only logged. `refresh_instructions` also sends the rendered instructions on `lumi.prompt`, so the X-ray panel shows exactly what the model reads. Dates are checked by `parse_date`.
+  UI -- "anonymous id" --> Token
+  Token -- "signed token,<br/>agent dispatch inside" --> UI
+  UI <-- "mic audio, Lumi's voice,<br/>board pushes, RPCs" --> Room
+  Room <--> agent
+  Voice --> LLM
+  Tools --> DB
+  Tools --> Tavily
+  Stats -. "read-only role" .-> DB
+```
 
-**`memory.py`**: all database access, plain SQL with `psycopg`, no LiveKit imports. `connect` opens one autocommit connection per session (10 s connect timeout) and applies `schema.sql`. Tasks: `list_tasks`, `get_task`, `create_task`, `update_task` (one fixed `UPDATE` with `COALESCE`, so `None` means "keep"; `remove_target_date` clears the date), `delete_task` (sets `deleted_at`), `restore_task` (clears it; picks the latest delete when no id is given). Facts: `load_facts`, `save_fact` (an upsert), `forget_fact`, `forget_all_facts` (the panel's "Forget everything"). Every task and fact query filters on `user_id`, and every task and fact write uses `RETURNING`, so callers report the row as stored. Metrics: `record_usage` and `record_turn` (columns in `TURN_COLUMNS`; a missing stage is `NULL`) hold no user data, so they have neither.
+- **The browser never touches the database.** It gets a token, joins a room, and from then on only talks to the agent.
+- **The agent is the only writer.** It runs on LiveKit Cloud, one job per room, and reads and writes Postgres with plain SQL.
+- **Identity is an anonymous UUID** kept in `localStorage` (`lib/userId.ts`). The token makes it the participant identity, and the agent uses it as `user_id` in every query. There is no login.
 
-**`schema.sql`**: four tables, applied at the start of every session, so every statement is `IF NOT EXISTS`. `facts` has one row per `(user_id, key)`, so saving again overwrites. `tasks` has an identity id, title, body, a `priority` with a `CHECK` (low, medium, high), `target_date`, `done`, timestamps and `deleted_at` for soft delete. One index on `user_id`. Two metrics tables for the `/stats` page, with no user id and no words: `provider_usage` (kind `llm`/`stt`/`tts` with a `CHECK`, model, tokens in and out, audio seconds, characters) and `turn_metrics` (model plus each stage in seconds: e2e, transcription, end of turn, LLM first token, TTS first audio, tools, board lead). Both are indexed on `at`, since the page reads time windows.
+## The one idea
 
-**`bench_latency.py`**: the offline latency benchmark from the latency deep dive. `bench_llm` sends Lumi's real prompt and tool schemas to each model in `config.build_llm()` (or the ones matching `--models`), one at a time, and times a plain reply, the tool call and the reply after the tool. `--bare` sends the persona with no tools, to measure prompt size. `bench_db` times Neon round trips and the SQL of one task change. `bench_push` joins two participants to a throwaway room and times the board push. `bench_tts` times Aura's first audio for the greeting. It can't time speech-to-text or end of turn: those need a microphone.
+**The model only turns words into tool calls. Code owns the data.**
 
-**`tests/conftest.py`**: shared test setup. Loads `.env.local` like the agent does (CI sets the variables from secrets instead). `needs_db` skips a test without `TEST_DATABASE_URL`. The `db` fixture connects to the Neon `test` branch, and `new_user` hands out fresh user ids and deletes their rows afterwards, so tests never see each other's data.
+```mermaid
+flowchart LR
+  Words["What the user said"] --> Model["LLM<br/>picks a tool + arguments"]
+  Model --> Tool["Tool in tools.py<br/>checks the arguments,<br/>writes with SQL"]
+  Tool --> DB[("Postgres")]
+  DB -- "read back once" --> Screen["Whole board<br/>pushed to the browser"]
+  DB -- "same rows" --> Prompt["Prompt re-rendered<br/>for the next request"]
+  DB -- "the stored row" --> Result["Tool result text"]
+  Result --> Model
+  Model --> Spoken["Spoken confirmation"]
+```
 
-**`tests/test_unit.py`**: fast tests with no LLM calls, run on every push (67 with a database). The fallback chain's order, timeout and effort, and that qwen is gone. Gemini signing, and that `llm_node` is really on `Lumi` and caps history at 20 items. Schema idempotence and the priority `CHECK`. SQL round trips, ordering and user isolation. The board payload matches the web contract, and fact changes reach the screen with no change note. Prompt rendering, the calendar, the greeting, timezone parsing. Tool replies, the duplicate guard, the no-field error, a task change costing three queries. `look_up` against a local fake Tavily server: errors (401, 429, 432, 500, timeout, no answer) are tool errors, and a wrong task id spends no search. The sorry line fires only when every model failed. Metrics: `usage_delta` against real SDK usage objects, both metrics inserts round-trip (a missing stage is `NULL`), the `kind` `CHECK`, and a failed metrics write is logged, not raised. Tool activity: the payload for a start (with or without a usable `task_id`) and an end, and a failed send that doesn't raise. The prompt the screen gets is the one the model has, sent after the board. Fixed replies match only whole phrases, skip the model, and never apply after a tool result. Typed memory edits: remember, forget (twice is fine) and forget everything reach the board and the prompt like spoken ones; bad JSON, an unknown action, an empty or too-long value and a 21st fact are refused, while replacing a fact at the cap still works; a spoken fact has the same length limit. After a search, delete and forget are refused until the user speaks again, and the flag clears on the next user message.
+What follows from it:
 
-**`tests/test_evals.py`**: 36 text-only conversations against the real LLM, using LiveKit's test helpers (`session.run`, `result.expect`, `judge`). They run only with `pytest -m eval`, because they spend Groq quota. 17 are marked `core` and run on every PR that changes `agent/`. Each task eval gets a fresh user and a fixed "today" (Friday 2026-11-27). They assert on tool calls, their arguments and the stored row wherever possible, and use a narrow LLM judge for the reply. Covers: persona, "can you hear me?", every task edit, deletes and undo, ambiguity (not core), unknown tasks, two tasks in one sentence, relative dates, facts across sessions, web search (mocked with `mock_tools`), prompt injection in a search result (and, separately, that the board survives one whatever the model tries), and a whole task turn with every Groq model down. Scenarios are only ever added.
+- **The screen shows what was stored, not what the model said.** After every change the agent reads the board back and pushes it, *before* Lumi speaks.
+- **Wrong values can't get in.** Priority is an enum in the tool schema and a SQL `CHECK`. Dates are parsed in code (`parse_date`). Facts have length and count caps.
+- **The model doesn't do date arithmetic.** The prompt lists the next 14 days with their dates, so "next Friday" is a lookup.
+- **The confirmation is built from the stored row** (`describe`), so Lumi can't claim a change it didn't make.
 
-**`Dockerfile`**: the image LiveKit Cloud builds, trimmed from the starter. Dependencies get their own cached layer, model weights (VAD, turn detector) are baked in at build time so a cold start doesn't download them, and the process runs as a non-root user straight from the venv.
+## Life of one voice turn
 
-**`livekit.toml`**: written by `lk agent create`. It binds this folder to the LiveKit Cloud project and agent id, so `lk agent deploy`, `logs` and `status` need no flags. It holds no secrets: those live in LiveKit Cloud.
+Example: on Friday 2026-11-27 the user says "Add a task to call the bank tomorrow, high priority."
 
-## Web (`web/`, Next.js on Vercel)
+```mermaid
+sequenceDiagram
+  autonumber
+  participant B as Browser<br/>VoiceSession
+  participant A as Agent<br/>agent.py
+  participant M as LLM chain
+  participant T as tools.py
+  participant D as Postgres
 
-**`app/api/token/route.ts`**: the only backend. `POST` checks that the browser's anonymous id is a UUID, signs a 15-minute LiveKit token with that id as the participant identity, and puts the `lumi` agent dispatch into the token's room config. The server picks the room and the agent, not the client.
+  Note over B,D: Page load, before the user talks
+  B->>B: show the cached board ("Last seen")
+  B->>A: join the room, mic off
+  A->>D: connect, read board and facts
+  A-->>B: lumi.board with change null
+  B->>A: lantern tap, lumi.start RPC with timezone
+  A-->>B: greeting: fixed text, no model, about 0.35 s
 
-**`components/VoiceSession.tsx`**: the whole client session. `useSession` connects on page load with the mic off, so the agent's cold start overlaps the user reading the page. It starts from the cached board and facts (`loadCachedBoard`) and registers the `lumi.board` text-stream handler before connecting, so the first push can't arrive with no listener. Each push is parsed (`parseBoard`), cached (`saveCachedBoard`) and added to the recent changes (`addChange`). The facts are compared with the previous push (`changedFacts`, `describeFactChanges`) so the memory shelf lights only what was just remembered; the first live push only replaces the cached copy, so a reload lights nothing. `startTalking` runs on the lantern tap: unlock audio, mic on, then the `lumi.start` RPC with the browser's timezone. `wakeAgain` starts a fresh room after an end or failure. A second handler reads `lumi.activity` (`parseActivity`, `applyActivity`) into `running`, the tools running now: the status line says what Lumi is doing (`activityText`, e.g. "Searching the web…") while it thinks, and `running` is cleared whenever Lumi isn't thinking, so a lost "ended" can't stick. The tab title follows the state ("Listening · Lumi"). Two more handlers keep `turns` (each reply's timings, `parseTurn`) and `prompt`. The browser measures its own screen lead: `boardAt` is set when a changed board arrives, and the gap to Lumi's state turning "speaking" goes into `leads` (reset on "listening", so an old board can't count against a new turn). Keys: Space does what the lantern does (start, or mute while talking), Esc ends the session, `X` or the X-ray button opens `XRay` (ignored with a modifier, on a focused control and inside a dialog); when the session ends, `SessionEnd` takes the captions' place: what got done in the user's words (`tallyLines`), and "Saved to your board for next time". `tally` is counted inside the board updater (`addToTally`, from the previous board and facts), so it stays a pure function; the first live push only replaces the cached copy and isn't counted. `wakeAgain` starts a fresh tally. The lantern's state comes from `useAgent` (waking, ready, listening, thinking, speaking, muted, ended, failed). `Lantern` pulses with `useTrackVolume` of whoever is talking, in its own component so only it re-renders 30 times a second. `Captions` shows the user's latest turn (`userCaption`) and Lumi's current line from `useSessionMessages`. Lumi's line arrives in step with the audio, so its last word (`splitLastWord`) is the one being spoken and gets the `word-now` highlight, and the tasks whose titles it has named (`spokenTaskIds`) go up to `spoken`, only when that set changes. The board gets them only while Lumi's state is "speaking". `editMemory` sends a typed memory edit on the `lumi.memory` RPC; the board gets it only while an agent is there to take it (not waking, ended or failed), and `null` otherwise. Before the user says anything (ready or listening, board not empty), `Captions` shows up to three `suggestions` as chips. `RoomAudioRenderer` plays Lumi's voice.
+  Note over B,D: One voice turn
+  B->>A: audio
+  A->>A: speech to text, end of turn, llm_node
+  A->>M: prompt, last 20 chat items, 7 tool schemas
+  M-->>A: create_task(title, priority high, date 2026-11-28)
+  A-->>B: lumi.activity started
+  A->>T: create_task
+  T->>D: INSERT ... RETURNING
+  T->>D: read board and facts once
+  T-->>B: lumi.board with change created
+  Note over B: the card lights up now,<br/>before Lumi speaks
+  T->>T: refresh_instructions, also sent on lumi.prompt
+  T-->>A: tool result built from the stored row
+  A->>M: second request with the tool result
+  M-->>A: "Done, Call the bank is on for tomorrow..."
+  A-->>B: Aura voice and captions
+  A-->>B: lumi.turn with the stage timings
+```
 
-**`components/Board.tsx`**: a pure view of the board. Open tasks are grouped into date lanes (`groupTasks`), done tasks go in a collapsible Done list, and the board is marked "Last seen" until the first live push. `renderCard` sets `data-changed` from `change.fields`, so CSS flashes only the changed parts, and gives a changed card a fresh key so its animation restarts. Deleted tasks stay as "ghosts" until their drift-away animation ends (`onGhostGone`). Receipts stack, one per change, and each one removes itself when it fades (`onReceiptDone`). The same sentences go to a hidden `aria-live` region for screen readers. A changed card is scrolled into view. A card with a running tool (`working`) gets `is-working` and a label from `ACTIVITY_TEXT`. A card Lumi is naming right now (`spoken`) gets `is-spoken` (read-along). When `todayAllDone`, a line says "All of today's lanterns are out", and it glows once if the push that finished the day was a "done". `Memory` (its own file) sits under the date. Its sentences ("Remembered your favorite color: blue") go to the same `aria-live` region. The meta row also holds the `Connections` button, and each open dated card gets a `CalendarLink` just before its date chip (both from `Connections.tsx`). `Calendar` (its own file, below) sits under the memory shelf, hidden on an empty board. Board keeps the picked day (`day`): the lanes and the Done list show only `tasksOnDay(visible, day)`, a bar above them says `dayFilterText` ("Showing Fri 20 Nov · 2 tasks", or "Nothing on …" with a phrase to try) with a "Show all" button, and picking a day opens the Done list so the day's finished tasks show too. When a board arrives with a change, the filter is cleared first, so the card Lumi is changing is never hidden while it says so. `Notes` renders a card's notes through `splitLinks`: text stays text nodes, and each http(s) link becomes a small `.source-chip` naming the site (new tab, `noopener noreferrer`, the full URL as its title). The "Sources:" label the agent writes is kept, since it says what the chips are.
+| Step | What happens | Where |
+|---|---|---|
+| 1–2 | The page shows last visit's board at once, then connects with the mic off, so the agent's cold start (10–20 s when idle) overlaps the user reading. | `VoiceSession.tsx` `useSession`, `loadCachedBoard` |
+| 3–4 | The agent connects to Neon while it joins the room, reads the board once, pushes it, and renders the prompt from the same rows. | `agent.py` `entrypoint` |
+| 5–6 | The tap unlocks audio, turns the mic on and sends the timezone. The greeting is coded text, so it works even with every model capped. | `startTalking`, `on_start`, `prompt.greeting` |
+| 7–8 | Silero VAD, Deepgram Nova-3 and the `v1-mini` turn detector decide the user has finished. Preemptive generation starts the LLM early. | LiveKit `AgentSession`, built in `entrypoint` |
+| 8 | Before every LLM request: is it an exact fixed phrase ("thanks")? Then answer with no model. Otherwise trim the chat to 20 items and sign tool calls for Gemini. | `Lumi.llm_node` |
+| 9–10 | The fallback chain tries each model in turn when one errors or rate-limits. The model reads the calendar in the prompt and picks the date. | `config.build_llm` |
+| 11 | The lantern says "Adding it to the board…" while the tool runs. | `show_tool_activity` |
+| 12–14 | The tool validates the arguments, writes the row, and reads the board back once: three queries per change. | `tools.create_task`, `publish` |
+| 15 | The board reaches the browser, which parses, caches and animates the change and shows a receipt toast, before Lumi speaks. | `Board.tsx` |
+| 16–17 | The prompt is re-rendered from the same rows, and the tool's result is built from the stored row. | `refresh_instructions`, `describe` |
+| 18–20 | The model turns the tool result into one short sentence, Aura speaks it, and the caption highlights the word being spoken. | `Captions` |
+| 21 | The turn's timings go to the browser (X-ray), the logs and the `turn_metrics` table (`/stats`). | `log_turn_latency` |
 
-**`components/Calendar.tsx`**: the calendar above the lanes. By default the night strip: "Next 14 days", the same 14-day calendar the model reads in its prompt (`nightStrip`), one cell per day from today with weekday and day number, an "N overdue" chip, and a "Month" toggle. The month view (`monthGrid`) is a Monday-first grid of whole weeks with prev/next arrows, today ringed, days outside the month dimmed, and a past day's dots in the overdue ember. Every day is a `<button>` with `aria-pressed`; clicking one calls `onSelect` (clicking it again clears). One `renderDay` draws both views: one dot per open task, lit like its card's priority, a tooltip and screen-reader line (`nightLabel`), and a flare when the task was just added or moved to that day (`dotIgnites` on the card's `cardChange`, with a fresh key so it replays). Whether the month is open is kept in `localStorage`, read after mounting and wrapped in try/catch. On a phone only the strip row scrolls sideways; the month's seven columns shrink to fit 360 px.
+## The agent, file by file
 
-**`components/Connections.tsx`**: the "Connections" button and the panel it opens, a native `<dialog>` opened with `showModal()` through a ref, so the browser handles focus, Escape and the backdrop and React keeps no open/closed state. A click whose target is the dialog itself is a backdrop click, because the padding lives on the inner div. Only integrations are listed (the wider roadmap is in the README), as rows in two groups. Each `Row` is a generic glyph (one SVG path from `GLYPHS`, in currentColor, no brand logos), a name, one short line, and a button or a status pill on the right. "Works today": the calendar file, where `downloadIcs` turns `boardToIcs(tasks, new Date())` into a Blob URL and downloads `lumi-tasks.ics` (revoked after 10 s, because Safari may still be reading it), with the count of dated tasks under the button, which is disabled ("No dated tasks yet") when `calendarTasks` finds none; and Google Calendar, which points to the icon on each dated card. "Coming soon": two-way calendar sync and a phone call, quieter, with a pill and no button so nothing pretends to work, and a `title` tooltip saying what each would take. `CalendarLink` is the per-card link: Google's prefilled page (`googleCalendarUrl`) in a new tab, a small calendar glyph named "Add “title” to Google Calendar". With a mouse it shows on card hover or focus; on touch screens it is always there, but faint.
+`agent/` is a Python [LiveKit Agents](https://docs.livekit.io/agents/) worker. Five modules, each with one job:
 
-**`components/Memory.tsx`**: what Lumi remembers, and the user's control over it. The shelf shows every saved fact as a chip (`factLabel` turns `favorite_color` into "favorite color"), a hint when there are none, a glow on the chips the latest push changed, and an Edit (or Add) button. The button opens a native `<dialog>` that says what is kept, where (the database, under this browser's anonymous ID), and who reads it (the model, before every reply), with a link that opens X-ray to show the prompt itself. Each fact has Change (fills the form) and Forget; the form saves a name and a value; "Forget everything" asks first. Nothing is applied in the browser: every edit goes to `onEdit` (the `lumi.memory` RPC), and the chips change only when the agent's board push brings the stored facts back, as for a spoken fact. While `onEdit` is `null` (no agent), the controls are disabled and the note says why. A refusal from the agent ("Keep a fact short…") shows under the form.
+```mermaid
+flowchart TD
+  agent["agent.py<br/>entry point, the Lumi agent,<br/>RPCs, logs and metrics"]
+  tools["tools.py<br/>the 7 tools, guards,<br/>publish to the browser"]
+  prompt["prompt.py<br/>what the model reads"]
+  memory["memory.py<br/>all SQL"]
+  config["config.py<br/>providers and limits"]
+  schema[("schema.sql")]
+  agent --> tools
+  agent --> prompt
+  agent --> memory
+  agent --> config
+  tools --> prompt
+  tools --> memory
+  tools --> config
+  prompt --> config
+  memory --> schema
+```
 
-**`components/XRay.tsx`**: the deep dives, live. `XRay` (press X) shows the last reply's stages from `STAGES` as bars against the whole reply (they can overlap, so they aren't stacked), the model that answered, how far the screen led the voice (as the agent measured it and as this browser did), "This session" (replies and their median time to voice, changes and undos from the tally, the median screen lead, and which models answered), and "What Lumi sees": the instructions exactly as the model reads them. It only opens on request, so these engineering numbers never sit in a user's way; the end-of-session card in `VoiceSession.tsx` speaks in the user's terms instead.
+| File | Lines | Its job |
+|---|---|---|
+| `agent.py` | 345 | Starts a session per room, the `Lumi` agent, the two RPCs, logging and metrics |
+| `tools.py` | 537 | The tools the model can call, their guards, and pushing the board to the browser |
+| `memory.py` | 217 | Every database query, plain SQL with `psycopg`, no LiveKit imports |
+| `prompt.py` | 128 | The persona and rules, the rendered prompt, the greeting, fixed replies |
+| `config.py` | 108 | Every provider, model and tunable number in one place |
+| `schema.sql` | 64 | Four tables, applied at the start of every session |
+| `bench_latency.py` | 319 | The offline latency benchmark from the deep dive |
 
-**`lib/turns.ts`**: pure helpers for the `lumi.turn` stream. `Turn` mirrors the agent's turn row. `parseTurn` checks it (a stage that didn't happen is `null`), `STAGES` names the stages in order, `median`, `seconds` ("0.85 s" or "—"), `shortModel` (drops "openai/") and `sessionSummary`. The end-of-session tally: `Tally`, `EMPTY_TALLY`, `addToTally` (one board push: created, done (an update that touched `done` and left the task done; a reopen counts as a change), other edits, deleted, restored, facts remembered and forgotten), `tallyLines` ("3 tasks added", only what happened) and `tallyTotal`.
+### `agent.py`
 
-**`lib/turns.test.ts`**: 8 tests: parsing, median, formatting, the session summary (each model once, in order), the tally counted per push (a reopen isn't a done), and its lines.
+**`Lumi`**, the agent. It lists the seven tools (`create_task`, `update_task`, `delete_task`, `restore_task`, `remember_fact`, `forget_fact`, `look_up`) and overrides `llm_node`, which runs before every LLM request. In order, `llm_node`:
 
-**`lib/board.ts`**: the payload types (`Task`, `Change`, `BoardPayload`) and pure helpers, with no React, so each one can be tested on its own. `parseBoard` checks the stream's shape (facts default to `{}`, so an older agent still works). `loadCachedBoard` / `saveCachedBoard` wrap `localStorage` (errors ignored, a miss is harmless). `daysFromToday`, `groupOf`, `groupTasks` and `friendlyDate` handle dates as local calendar days. `describeChange` words a receipt. `addChange`, `cardChange` and `withGhosts` keep a list of recent changes, so back-to-back changes each finish their animation. `userCaption` joins every user segment since Lumi last spoke. Memory shelf: `factLabel`, `changedFacts` (new or changed keys) and `describeFactChanges` (a sentence per remembered or forgotten fact). `todayAllDone`: at least one task due today, all of them done, nothing overdue. Suggestions: `suggestions` picks up to three phrases that fit the board (what's overdue, brief me on today, move an undated task, mark one done, a first fact). Read-along: `spokenTaskIds` (whole titles of three letters or more, matched on lowercase words in any script) and `splitLastWord`. Tool activity: `parseActivity`, `applyActivity` (a start adds, an end removes, so parallel tools work), `ACTIVITY_TEXT` and `activityText`. Calendar: `nightOf` builds one `Night` (date, weekday, day number, `isToday`, `isWeekend` for Saturday and Sunday, open tasks brightest first), shared by both views. `nightStrip(tasks, now, days = 14)` returns one per local day from today and the overdue count; `monthGrid(tasks, year, month, now)` returns the month as weeks of `MonthDay` (a `Night` plus `inMonth` and `isPast`), Monday first, 4 to 6 rows. Days are built with the `Date` constructor so month and year ends roll over, and their ISO date from local parts, never `toISOString` (UTC). `tasksOnDay` (every task on a date, open and done) and `dayFilterText` (the filter bar's line; the "try saying" hint only for today or later) serve the day filter. `nightLabel` ("Fri 13 Nov: Call the bank (high), Buy milk (low)") and `dotIgnites` (a create, or an update that touched `target_date`). Source chips: `splitLinks(text)` cuts notes into `{ text }` and `{ url, site }` pieces; only `https?://` is matched, trailing sentence punctuation and an unopened `)` stay text, a URL that doesn't parse stays text, and `site` drops `www.` like the agent's `site_name`.
+1. sets `searched_this_turn` from `tools.search_ran_this_turn`, so the deleting tools know whether web text is in play ([why](#web-text-cant-delete));
+2. if the user's message is exactly one of `prompt.FIXED_REPLIES`, says it with `say_fixed` and calls no model (`last_reply_fixed` makes the metrics say "fixed reply");
+3. otherwise sends a copy of the chat cut to the last `MAX_HISTORY_ITEMS` (20), with tool calls signed for Gemini (`config.sign_tool_calls_for_gemini`).
 
-**`lib/board.test.ts`**: 43 tests with Node's built-in runner (`npm test`), no extra dependencies. Payload parsing, date lanes across a daylight-saving switch, lane order, receipts, captions split into several segments, back-to-back changes and ghosts, facts in the payload, which facts changed, tool activity (parsing, parallel tools), read-along matching (whole words, any script, not before the title is said in full), and suggestions drawn from the board. The night strip: 14 days from today with weekends, a month and year end, tasks per night in priority order with done and out-of-range tasks left out, the overdue count, the label, and when a dot ignites. The month grid: Monday-first weeks with the edge days marked, 4 or 5 rows when the month needs fewer, across a year end, tasks per day with overdue ones kept. The day filter: tasks on a day (open and done) and the bar's line. Source chips: plain text, one URL, two URLs, punctuation after a URL (and a Wikipedia-style bracket kept), and non-http schemes (`javascript:`, `ftp:`, `data:`, `mailto:`) staying text.
+**`prewarm`** loads the Silero VAD once per worker process.
 
-**`lib/calendar.ts`**: taking dated tasks to a calendar with no OAuth, as pure helpers with no React. A task has a day and no time, so every entry is an all-day event whose end is the next day (exclusive end), computed by `nextDay` with `Date.UTC` so month and year ends roll over and no daylight-saving hour can move the day. `calendarTasks` keeps the open dated tasks. `googleCalendarUrl` builds Google's prefilled "add event" link (`calendar/render?action=TEMPLATE`, `dates=YYYYMMDD/YYYYMMDD`) with `URLSearchParams`; Google doesn't officially document that URL, so the comment says so. The details are the priority line, then the notes. `boardToIcs` writes an RFC 5545 `VCALENDAR`: one `VEVENT` per open dated task with `DTSTART;VALUE=DATE`, `DTEND;VALUE=DATE`, a stable `UID` (`task-<id>@lumi`, so a re-import can update instead of copy) and a UTC `DTSTAMP` from the `now` passed in. `escapeText` escapes backslash, `;`, `,` and line breaks; `fold` wraps lines at 75 octets, counting UTF-8 bytes per character so Arabic or an emoji is never cut; every line ends in CRLF.
+**`entrypoint`** runs once per room:
 
-**`lib/calendar.test.ts`**: 12 tests for those helpers. The Google link's dates, its encoding (`&`, `#`, line breaks) and its details, end dates across a month end, a year end and 29 February, the exact `.ics` text for one task, CRLF everywhere, done and undated tasks skipped, an empty calendar, TEXT escaping, and folding at 75 octets with Arabic text.
+1. starts the Neon connect (`memory.connect`) while the room connect runs, so they overlap;
+2. builds the `AgentSession` from `config.py`, with the local `v1-mini` turn detector;
+3. waits for the browser and builds the per-session `tools.SessionState` with its identity as the user id;
+4. reads the board and facts once, pushes them (`change: None`), and renders the prompt from the same rows;
+5. starts the session, then registers the RPCs.
 
-**`app/stats/page.tsx`**: the `/stats` page, a server component rendered on every request. It checks the password again (`isAuthorized`) in case `proxy.ts`'s matcher ever changes, then loads seven sources in parallel, each through `orNull` so one failing source blanks only its own card: `llmUsage` and `speechUsage` (sums over `provider_usage` for the last minute, 24 h and 30 days), `recentTurns` (`turn_metrics`, last 7 days), `liveSessions` (LiveKit `listRooms`, against `SESSION_LIMIT`), `searchCredits` (Tavily `GET /usage`), `deepgramCredit` (only with `DEEPGRAM_USAGE_KEY`) and `monthUsage` (every kind and model's `provider_usage` sums plus the `turn_metrics` reply count, last 30 days). It reads Neon through `STATS_DATABASE_URL`, a role that can only `SELECT` the metrics tables. `Meter` draws a cap as a bar plus its number and a status word; `Latency` shows each stage's median, 90th percentile and slowest in turn order, splits the whole-turn time into plain replies and tool turns, and lists the last 20 turns. `Cost` ("What it would cost") runs `costSummary` on `monthUsage` and Tavily's search count: the 30-day total at list prices split by provider (LLM, speech-to-text, voice, search, LiveKit agent minutes), the cost per spoken reply and per 1,000 conversations, with each assumption in a card note and any model with no price named. Styles in `stats.module.css`.
+**The two RPCs** (the browser calls these):
 
-**`proxy.ts`**: Next 16's middleware. On `/stats` only, it answers 401 with `WWW-Authenticate: Basic` unless the password matches `STATS_PASSWORD`, so the browser shows its own sign-in box.
+- `on_start` (`lumi.start`): reads the timezone (`parse_timezone`, UTC if bad), re-renders the prompt for the user's "today", and says `prompt.greeting(...)` with no model call.
+- `on_memory_edit` (`lumi.memory`): a typed edit from the memory panel. It refuses any caller but the session's user, runs `tools.edit_memory`, and turns a `MemoryEditRefused` into an `RpcError` with code `MEMORY_EDIT_REFUSED` (2000, since LiveKit reserves 1001–1999), so the panel can show why. It logs the payload's size, never the fact.
 
-**`lib/stats.ts`**: pure helpers for the stats page. `LLM_LIMITS` (the free caps per model, from TECH_STACK, in fallback order; Gemini's marked approximate), `SESSION_LIMIT`, `isAuthorized` (Basic auth; any user name, only the password counts, nobody gets in without one configured), `levelOf` (ok under 70%, near from 70%, over from 90%), `percentile` (same interpolation as Postgres `percentile_cont`) and `summarize` (a stage that didn't happen is left out, not counted as zero). For the cost section: `PRICES` (pay-as-you-go list prices with a source per entry, checked `PRICES_CHECKED`; sources in TECH_STACK §15), `REPLIES_PER_CONVERSATION` (8, an assumption, since sessions aren't recorded), `costOf` (one usage sum in dollars, or null for a model with no price), `costSummary` (per-provider dollars, total, per reply and per 1,000 conversations; agent minutes taken as the speech-to-text minutes; null per reply with no replies) and `dollars` (cents, or two significant digits under a cent; "—" for null).
+**Session event handlers:**
 
-**`lib/stats.test.ts`**: 13 tests for those helpers, 6 of them for the cost code (prices per token, minute and character, an unpriced model named rather than counted as free, the per-provider sum, zero replies giving "—" instead of a division by zero, the dollar format).
+| Event | Handler | What it does |
+|---|---|---|
+| `conversation_item_added` | `log_turn_latency` | Logs `turn latency` and `user turn latency`, saves the turn to `turn_metrics`, sends it on `lumi.turn` |
+| `function_tools_executed` | `log_tool_time` | Logs `tool call` with its time |
+| `tool_execution_updated` | `show_tool_activity` | Sends `lumi.activity` when a tool starts and ends |
+| `agent_state_changed` | `log_screen_lead` | Logs `board push to speech`: how far the screen led the voice |
+| `session_usage_updated` | `record_usage` | Saves only what changed (`usage_delta`) to `provider_usage` |
+| `user_state_changed` | `end_when_idle` | Ends after 3 min of silence (a `call_later` timer also caps a session at 10 min) |
+| `error` | `apologise_if_no_model_answered` | Says a fixed sorry line when every model in the chain failed |
 
-**`lib/userId.ts`**: `getUserId` creates and remembers a random UUID in `localStorage`. It is the user's identity for memory, with no login.
+Metrics writes go through `write_metrics`, which uses `run_beside`: they run beside the conversation, so no turn waits on them, and a failure is logged, not raised.
 
-**`app/page.tsx`**: the page: the masthead (the `LanternMark` before the "Lumi" wordmark, `aria-hidden` so the heading still reads as "Lumi") and `VoiceSession`, loaded client-only, because `localStorage` doesn't exist during server rendering.
+### `tools.py`
 
-**`components/LanternMark.tsx`**: Lumi's lantern as an inline SVG: a handle ring, a cap, the rounded glass, a base and a teardrop flame (a circle drawn out to a point) over a radial glow, in the board's amber. One drawing shared by the masthead, the home-screen icon and the link preview, so they always match. Its `viewBox` crops `icon.svg`'s 64×64 grid, so the coordinates are the same in both.
+The model decides what the user meant; this file owns the data.
 
-**`app/icon.svg`**: the browser-tab icon, hand-written: the same lantern on a near-black rounded tile. It's a static copy of `LanternMark` because Next serves `app/icon.svg` as a file and adds the `<link rel="icon">` itself. Strokes are 3.5 of 64 units so the glass and flame still read at 16×16.
+- **`SessionState`**: what the tools share for one session: user id, DB connection, room, timezone, `pushed_at`, a lock, and `recent_creates` for the duplicate guard.
+- **Task tools:**
+  - `create_task` refuses a repeat of the same title within `DUPLICATE_CREATE_SECONDS` (10).
+  - `update_task` raises a `ToolError` when no field is given, and compares with the stored row so `fields` lists only real changes.
+  - `delete_task` is a soft delete; `restore_task` is undo (no id means the latest delete).
+- **Fact tools:** `remember_fact` and `forget_fact`. `fact_key` turns "Favorite Color" into `favorite_color`; `fact_problem` refuses an empty or too-long fact before it's saved.
+- **Web search:** `look_up` calls `search_web` (one `aiohttp` POST to Tavily). With a `task_id` it checks the task exists first, so a wrong id spends no credit, then appends the answer and two source links to the task's notes. Any failure is a `ToolError`.
+- **Guard:** `search_ran_this_turn` and `refuse_after_search` ([below](#web-text-cant-delete)).
+- **Typed memory edits:** `edit_memory(agent, state, payload)` handles `remember`, `forget` and `forget_all` from the panel. It checks the same rules, plus the `MAX_FACTS` count (only here: speaking 20 facts takes a while, pasting doesn't). A refusal is a `MemoryEditRefused` whose message the user sees.
+- **Publishing:** `publish` / `publish_for`, `push_board`, `board_payload`, `refresh_instructions` ([below](#every-change-goes-through-publish)). `after_task_change` builds the change note for task tools.
+- **Replies and dates:** `describe` builds a tool's reply from the stored row; `parse_date` checks dates; `spoken_date` says them.
+- **Hints:** `activity_payload` and `send_hint`, for what the screen shows but nothing depends on (tool activity, turn timings, the prompt). Unlike the board push, a failed hint is only logged.
 
-**`app/apple-icon.tsx`**: the 180×180 home-screen icon, drawn at build time by `ImageResponse` from `next/og` (no dependency). Full-bleed night background instead of the tile, because iOS rounds the corners itself. Served at `/apple-icon`.
+### `memory.py`
 
-**`app/manifest.ts`**: the web app manifest (`/manifest.webmanifest`): name, description, standalone display, night background and theme colour, and the two icons above. It lets a user add Lumi to a phone's home screen and open it without browser chrome.
+All database access, with no LiveKit imports.
 
-**`app/opengraph-image.tsx`**: the 1200×630 link-preview card (`/opengraph-image`), also built with `ImageResponse`: the night background with a warm glow rising from the bottom, the lantern, the wordmark and the tagline, in the default font so the build fetches nothing. No `metadataBase`: on Vercel, Next makes the `og:image` URL absolute from the deployment's own domain (`VERCEL_PROJECT_PRODUCTION_URL`, or the preview URL); only a local build falls back to `localhost` and warns.
+- `connect` opens one autocommit connection per session (10 s timeout) and applies `schema.sql`.
+- Tasks: `list_tasks`, `get_task`, `create_task`, `update_task`, `delete_task` (sets `deleted_at`), `restore_task` (clears it). `update_task` is one fixed `UPDATE` with `COALESCE`, so `None` means "keep"; `remove_target_date` clears the date.
+- Facts: `load_facts`, `save_fact` (an upsert), `forget_fact`, `forget_all_facts`.
+- Metrics: `record_usage` and `record_turn` (columns in `TURN_COLUMNS`; a missing stage is `NULL`).
 
-**`app/layout.tsx`**: the HTML shell. Loads the two fonts (Fraunces, Inter) with `next/font`, which serves them from our own domain, and sets the dark theme colour for mobile browsers.
+Two rules every task and fact query follows: it filters on `user_id`, and every write uses `RETURNING`, so callers report the row as stored. The metrics tables hold no user data, so they have neither.
 
-**`app/globals.css`**: "the lantern board". Dark only. Priority is how brightly a card glows, done tasks are put out. One keyframe per kind of change (`ignite` for a new or restored card, `ember-away` for a delete, `pop` for priority, `chip-slide` for a date, `shimmer` for title and notes, `extinguish` for done). Notes are never clamped: a card grows to show all of them, with line breaks kept. The memory shelf's chips light up with `fact-lit`; the memory panel (`.memory-panel*`) shares the Connections dialog's look through grouped selectors, and its form stacks on a phone. A card with a running tool breathes (`working`), and its label fades in after 0.4 s so fast tools don't flash it. The X-ray panel (`.xray`, bars in `.xray-bar`) and the end-of-session `.receipt`. Suggestion chips (`.hints`). The end-of-day line (`.all-out`, one `all-out` swell when it first appears). Read-along: `.card.is-spoken` (a transition, not an animation, so it follows the voice and never fights a change animation) and `.word-now` in the caption. Also the toasts, the lantern states, the masthead's lantern mark (`.wordmark-lantern`: sized in `em` so it shrinks with the wordmark, a soft `drop-shadow` glow and a slow `mark-flicker` on its flame), a 640 px mobile layout, and gentler keyframes under `prefers-reduced-motion`. Animations only touch transform, opacity, box-shadow and filter, so they stay smooth. The last block is Connections: the meta row wraps so the button drops below the count on a phone, the per-card calendar link (hidden until hover or focus under `@media (hover: hover)`, faint on touch, a 24 px tap target), and the dialog (`.connections`, which scrolls inside on a short screen and is a little wider under 480 px; `.connections-row` is glyph, text and action in a flex row, and the `.is-soon` group is dimmed). The very last block is the night strip and source chips: `.nights-row` is a grid of `.night` cells that share the width on a wide screen and keep 42 px each on a phone, where only the row scrolls (`overflow-x: auto`, scroll snap, a faded right edge); today is a faint glass cell with amber numbers, weekends are dimmer; `.night-dot` is bright amber with a glow for high, `--amber-soft` for medium, a faint cool ring for low (like the cards' flames), and `dot-ignite` flares a dot that just landed (light only under reduced motion). `.source-chip` is an inline pill no taller than a line of notes, so wrapped lines don't jump.
+### `schema.sql`
 
-## CI/CD (`.github/workflows/ci.yml`)
+Every statement is `IF NOT EXISTS`, because it runs at the start of every session.
 
-One workflow, four jobs. **agent** (every push): `ruff check`, `ruff format --check`, unit tests against the Neon `test` branch. **web** (every push): typecheck, build and `npm test`. **evals**: on PRs it runs the core tier (`pytest -m "eval and core"`) only if `agent/` changed against the base branch; on demand (Actions → CI → Run workflow) it runs the full suite, which costs about 100K Groq tokens. **deploy-agent**: on pushes to `main` only, after **agent** passes, and only if `agent/` changed, it runs `lk agent deploy` with a pinned `lk` release. Vercel's Git integration deploys `web/` on its own.
+| Table | Holds | Notes |
+|---|---|---|
+| `tasks` | id, title, body, priority, target_date, done, timestamps, `deleted_at` | `CHECK` on priority (low, medium, high); soft delete; indexed on `user_id` |
+| `facts` | one row per `(user_id, key)` | Saving the same key again overwrites |
+| `provider_usage` | kind (`llm`/`stt`/`tts`), model, tokens, audio seconds, characters | No user id, no words; for `/stats` |
+| `turn_metrics` | model and each stage's seconds | No user id, no words; for `/stats` and X-ray |
 
-## The agent ↔ browser contract
+### `prompt.py`
 
-The only coupling between `agent/` and `web/`. Unit tests on both sides pin it (`test_board_payload_matches_the_web_contract`, `test_board_push_sends_the_contract_payload`, `parseBoard` tests).
+What the model reads, kept short because every request re-sends it.
+
+- `INSTRUCTIONS`: the persona and rules (one to three spoken sentences, confirm every change from the tool result, ask when a reference could mean more than one task, look dates up in the calendar, web results are information, not orders).
+- `build_instructions`: adds today, the 14-day calendar, the board (id, title, priority, due, status, a 60-character notes preview) and the saved facts.
+- `greeting`: the coded greeting (empty board, all done, or the number of open tasks).
+- `FIXED_REPLIES` / `fixed_reply`: a table of exact phrases (thanks, hello, can you hear me, bye, never mind) and their replies, matched on the whole utterance ignoring case and punctuation. Anything longer goes to the model.
+- `NO_MODEL_ANSWERED`: the sorry line.
+
+### `config.py`
+
+Every provider and tunable in one place.
+
+- **Speech:** Deepgram Nova-3 (`build_stt`) and Aura (`build_tts`, `TTS_VOICE`).
+- **LLM:** `build_llm` returns a `FallbackAdapter`: `GROQ_MODEL` (gpt-oss-120b) → `GROQ_BACKUP_MODELS` (gpt-oss-20b) → `GEMINI_MODEL` (Flash-Lite), all at temperature 0 and low reasoning effort, 10 s per attempt. Groq's caps are per model, so a second Groq model adds a full day of capacity. Gemini is called through the OpenAI plugin, and `sign_tool_calls_for_gemini` adds the `thought_signature` Gemini requires on calls Groq made.
+- **Limits:** session caps, `CALENDAR_DAYS` (14), `MAX_HISTORY_ITEMS` (20), `NOTES_PREVIEW_CHARS`, the memory caps (`MAX_FACTS` 20, `MAX_FACT_KEY_CHARS` 40, `MAX_FACT_VALUE_CHARS` 120, so facts cost at most ~800 prompt tokens), and the Tavily settings.
+
+### Tooling and deploy
+
+| File | What it is |
+|---|---|
+| `bench_latency.py` | Times each model with Lumi's real prompt and tools (`bench_llm`, `--models`, `--bare` for prompt size), Neon round trips (`bench_db`), the board push (`bench_push`) and Aura's first audio (`bench_tts`). Speech-to-text and end of turn need a microphone, so they aren't here. |
+| `Dockerfile` | The image LiveKit Cloud builds. Dependencies in their own cached layer, model weights baked in so a cold start downloads nothing, runs as a non-root user. |
+| `livekit.toml` | Binds this folder to the LiveKit Cloud project and agent, so `lk agent deploy`, `logs` and `status` need no flags. No secrets: those live in LiveKit Cloud. |
+
+## The web app, file by file
+
+`web/` is a Next.js 16 app on Vercel. Components draw; `lib/` holds the logic as pure functions with no React, each tested on its own.
+
+```mermaid
+flowchart TD
+  page["app/page.tsx<br/>masthead + VoiceSession"]
+  VS["VoiceSession.tsx<br/>connection, streams, lantern,<br/>captions, keys, end card"]
+  Board["Board.tsx<br/>lanes, cards, toasts"]
+  XRay["XRay.tsx<br/>timings + the prompt"]
+  Memory["Memory.tsx<br/>shelf + edit panel"]
+  Calendar["Calendar.tsx<br/>14-day strip + month"]
+  Conn["Connections.tsx<br/>.ics + Google link"]
+  token["app/api/token/route.ts"]
+  lib["lib/: board.ts · turns.ts · calendar.ts · userId.ts<br/>pure helpers, no React"]
+
+  page --> VS
+  VS --> Board
+  VS --> XRay
+  Board --> Memory
+  Board --> Calendar
+  Board --> Conn
+  VS -. "POST on page load" .-> token
+  VS -.-> lib
+  Board -.-> lib
+```
+
+| File | Lines | Its job |
+|---|---|---|
+| `app/api/token/route.ts` | 38 | Signs a 15-minute LiveKit token for the anonymous id, with the `lumi` agent dispatch inside |
+| `components/VoiceSession.tsx` | 460 | The whole live session: connects, listens to every stream, holds the state |
+| `components/Board.tsx` | 235 | Draws the board: lanes, cards, change animations, toasts, the day filter |
+| `components/Memory.tsx` | 186 | The memory shelf and the panel to edit it |
+| `components/Calendar.tsx` | 123 | The 14-day strip and the month view; days are clickable |
+| `components/Connections.tsx` | 139 | Calendar export and the "Coming soon" integrations |
+| `components/XRay.tsx` | 82 | The deep dives live: timings, models, screen lead, the prompt |
+| `lib/board.ts` | 487 | Payload types and every board helper |
+| `lib/turns.ts` | 141 | Turn timings and the end-of-session tally |
+| `lib/calendar.ts` | 107 | The Google Calendar link and the `.ics` file |
+| `app/stats/page.tsx`, `lib/stats.ts`, `proxy.ts` | | The password-protected `/stats` dashboard |
+| `app/globals.css` | 2263 | "The lantern board": every style and animation |
+
+### `app/api/token/route.ts`
+
+The only backend. `POST` checks the anonymous id is a UUID, signs a 15-minute token with it as the participant identity, and puts the `lumi` agent dispatch into the token's room config. The server picks the room and the agent, not the client.
+
+### `components/VoiceSession.tsx`
+
+The whole client session, and the only component that talks to LiveKit.
+
+- **Connecting:** `useSession` connects on page load with the mic off. It registers the `lumi.board` handler *before* connecting, so the first push can't arrive with no listener. `wakeAgain` starts a fresh room after an end or failure.
+- **Starting:** `startTalking` (the lantern tap, or Space): unlock audio, mic on, then `lumi.start` with the browser's timezone.
+- **State it keeps, and where each piece comes from:**
+
+| State | Comes from | Shown in |
+|---|---|---|
+| The board, facts and recent changes | `lumi.board` → `parseBoard`, `saveCachedBoard`, `addChange` | `Board` |
+| Which facts just changed | `changedFacts`, `describeFactChanges` against the previous push | The memory shelf's glow |
+| `running` (tools running now) | `lumi.activity` → `parseActivity`, `applyActivity` | The status line and the breathing card |
+| `turns` | `lumi.turn` → `parseTurn` | X-ray |
+| The prompt | `lumi.prompt` | X-ray, "What Lumi sees" |
+| `leads` (screen lead, measured here) | `boardAt` to the agent's state turning "speaking" | X-ray |
+| `tally` | `addToTally`, inside the board updater | The end-of-session card |
+| The agent's state | `useAgent` | The lantern and the tab title |
+
+- **The first live push only replaces the cached copy:** it doesn't light facts or count in the tally, so a reload looks calm.
+- **Small components inside:** `Lantern` pulses with `useTrackVolume` (its own component, so only it re-renders 30 times a second). `Captions` shows the user's turn (`userCaption`) and Lumi's line; the last word (`splitLastWord`) is highlighted, and tasks whose titles Lumi has said (`spokenTaskIds`) light up (read-along). Before the user speaks, `Captions` shows up to three `suggestions`. `SessionEnd` replaces the captions when a session ends (`tallyLines`).
+- **Memory edits:** `editMemory` sends the `lumi.memory` RPC. The board gets it only while an agent can take it, `null` otherwise.
+- **Keys:** Space talks or mutes, Esc ends, X opens X-ray (ignored with a modifier, on a focused control, or inside a dialog).
+
+### `components/Board.tsx`
+
+A pure view of the board. All animation is CSS, chosen by class names.
+
+- **Layout:** open tasks in date lanes (`groupTasks`), done tasks in a collapsible Done list, "Last seen" until the first live push.
+- **Change animations:** `renderCard` sets `data-changed` from the change's fields, so CSS flashes only the parts that changed, and gives a changed card a fresh key so its animation restarts. A deleted card stays as a "ghost" until it has drifted away (`withGhosts`, `onGhostGone`). The changed card is scrolled into view.
+- **Toasts:** one receipt per change, stacked, each removed when it fades (`onReceiptDone`). The same sentences go to a hidden `aria-live` region for screen readers.
+- **Live hints:** `is-working` while a tool runs on the card (`ACTIVITY_TEXT`), `is-spoken` while Lumi says its title.
+- **Day filter:** the day picked on the `Calendar` (`day`) narrows the lanes to `tasksOnDay`, with a bar (`dayFilterText`) and "Show all". A board push with a change clears the filter, so the card Lumi is changing is never hidden.
+- **Notes:** `Notes` renders a card's notes through `splitLinks`: text stays text, and each http(s) link becomes a `.source-chip` naming the site. Never HTML, because search answers come from the web.
+- **End of the day:** when `todayAllDone`, "All of today's lanterns are out."
+
+### `components/Memory.tsx`
+
+What Lumi remembers, and the user's control over it.
+
+- **The shelf:** every fact as a chip (`factLabel`), lit when the latest push changed it, and an Edit (or Add) button.
+- **The panel** (a native `<dialog>`): what is kept, where, and who reads it, with a link to the prompt in X-ray. Change and Forget per fact, a name and value form, and "Forget everything" behind a confirm.
+- **Nothing is applied in the browser.** Every edit goes to `onEdit` (the RPC), and the chips change only when the agent's board push brings the stored facts back, exactly as for a spoken fact. While `onEdit` is `null`, the controls are disabled and the note says why.
+
+### `components/Calendar.tsx`
+
+- **The strip** ("Next 14 days", `nightStrip`): the same 14 days the model reads in its prompt, one dot per open task lit like its card's priority, and an "N overdue" chip.
+- **The month** (`monthGrid`): Monday-first weeks with prev/next arrows. Whether it's open is kept in `localStorage`.
+- **Every day is a button** (`aria-pressed`): clicking calls `onSelect`, clicking again clears. One `renderDay` draws both views; a dot flares when a task just landed on that day (`dotIgnites`).
+
+### `components/Connections.tsx`
+
+The Connections button and its `<dialog>`, as rows in two groups:
+
+- **Works today:** the calendar file (`downloadIcs` downloads `boardToIcs(...)` as `lumi-tasks.ics`) and Google Calendar (the link on each dated card).
+- **Coming soon:** two-way calendar sync and a phone call, with a pill and no button, so nothing pretends to work.
+
+`CalendarLink` is the per-card "Add to Google Calendar" link (`googleCalendarUrl`).
+
+### `components/XRay.tsx`
+
+Opens only on request (X, or the button). The last reply's stages (`STAGES`) as bars, the model that answered, the screen lead (as the agent measured it and as this browser did), "This session" (median time to voice, changes, undos, models), and "What Lumi sees": the prompt exactly as the model reads it.
+
+### `lib/` helpers
+
+| File | Helpers, grouped by what they serve |
+|---|---|
+| `board.ts` | **Payload:** `Task`, `Change`, `BoardPayload`, `parseBoard` (facts default to `{}`), `loadCachedBoard` / `saveCachedBoard`. **Lanes and dates:** `daysFromToday`, `groupOf`, `groupTasks`, `friendlyDate`, all as local calendar days. **Changes:** `describeChange`, `addChange`, `cardChange`, `withGhosts`. **Memory:** `factLabel`, `changedFacts`, `describeFactChanges`. **Captions and read-along:** `userCaption`, `spokenTaskIds`, `splitLastWord`. **Tool activity:** `parseActivity`, `applyActivity`, `ACTIVITY_TEXT`, `activityText`. **Calendar:** `nightOf`, `nightStrip`, `monthGrid`, `tasksOnDay`, `dayFilterText`, `nightLabel`, `dotIgnites`. **Other:** `suggestions`, `todayAllDone`, `splitLinks`. |
+| `turns.ts` | `Turn`, `parseTurn`, `STAGES`, `median`, `seconds`, `shortModel`, `sessionSummary`. The tally: `Tally`, `EMPTY_TALLY`, `addToTally`, `tallyLines`, `tallyTotal`. |
+| `calendar.ts` | `calendarTasks`, `googleCalendarUrl` (Google's undocumented prefilled link), `boardToIcs` (RFC 5545, all-day events, stable `UID`s, lines folded at 75 bytes so Arabic is never cut). |
+| `userId.ts` | `getUserId`: a random UUID kept in `localStorage`, the user's only identity. |
+
+Two date rules run through `board.ts` and `calendar.ts`: days are built with the `Date` constructor so month and year ends roll over, and an ISO date is built from local parts, never `toISOString` (which is UTC and can shift the day).
+
+### The `/stats` dashboard
+
+- **`proxy.ts`** (Next 16's middleware) asks for a password on `/stats` only (`STATS_PASSWORD`, HTTP Basic).
+- **`app/stats/page.tsx`** is a server component. It loads seven sources in parallel, each through `orNull` so one failure blanks only its own card: LLM and speech usage, recent turns, live sessions (LiveKit `listRooms`), Tavily credits, the Deepgram balance, and the month's usage for the cost section. It reads Neon with `STATS_DATABASE_URL`, a role that can only `SELECT` the metrics tables.
+- **`lib/stats.ts`** holds the logic: `LLM_LIMITS`, `isAuthorized`, `levelOf`, `percentile` (the same interpolation as Postgres), `summarize`, and the cost model (`PRICES` with a source each, `costOf`, `costSummary`, `dollars`).
+
+### The rest of `app/`
+
+| File | What it is |
+|---|---|
+| `page.tsx` | The masthead and `VoiceSession`, loaded client-only because `localStorage` doesn't exist on the server |
+| `layout.tsx` | The HTML shell; the two fonts through `next/font`, served from our own domain |
+| `components/LanternMark.tsx` | The lantern as an inline SVG, shared by the masthead, the home-screen icon and the link preview |
+| `icon.svg` | The browser-tab icon, a static copy of the lantern, since Next serves this file as is |
+| `apple-icon.tsx`, `opengraph-image.tsx` | The home-screen icon and the link-preview card, drawn at build time with `ImageResponse` |
+| `manifest.ts` | The web app manifest, so Lumi can be added to a phone's home screen |
+| `globals.css` | Dark only. A card's priority is how brightly it glows. One keyframe per kind of change (`ignite`, `ember-away`, `pop`, `chip-slide`, `shimmer`, `extinguish`), only on transform, opacity, box-shadow and filter so they stay smooth, with gentler versions under `prefers-reduced-motion`. A 640 px phone layout. |
+
+## The agent and browser contract
+
+The only coupling between `agent/` and `web/`. Tests on both sides pin it (`test_board_payload_matches_the_web_contract`, `test_board_push_sends_the_contract_payload`, the `parseBoard` tests).
+
+```mermaid
+flowchart LR
+  B["Browser"]
+  A["Agent"]
+  B -- "lumi.start RPC<br/>lumi.memory RPC<br/>mic audio" --> A
+  A -- "lumi.board<br/>lumi.activity · lumi.turn · lumi.prompt<br/>voice + captions" --> B
+```
+
+Only `lumi.board` is the truth. `lumi.activity`, `lumi.turn` and `lumi.prompt` are hints: if one is lost, nothing breaks.
 
 | Channel | Direction | Payload | When |
 |---|---|---|---|
 | Agent name `lumi` | token → LiveKit | `RoomAgentDispatch({agentName: 'lumi'})` | Every token. Must match `config.AGENT_NAME`. |
-| Participant identity | browser → agent | The anonymous UUID from `getUserId` | The agent uses it as `user_id` in every query. |
-| `lumi.board` text stream | agent → browser | `{"tasks": [{id, title, body, priority, target_date, done, updated_at}], "facts": {key: value}, "change": {action, task_id, title, fields} \| null}` | Once when the user joins (`change: null`), after every task change, and after every fact change (`change: null`; the browser compares the facts). `action` is `created`, `updated`, `deleted` or `restored`. `fields` lists changed fields for `updated`, else `[]`. Dates are ISO strings. |
-| `lumi.activity` text stream | agent → browser | `{"status": "started", "call_id", "tool", "task_id": int \| null}` or `{"status": "ended", "call_id"}` | When a tool call starts (the model has decided, the tool hasn't run) and when it ends. Only a hint: the board is still the truth. |
-| `lumi.turn` text stream | agent → browser | `{e2e_latency, end_of_turn_delay, transcription_delay, llm_ttft, tool_seconds, tts_ttfb, board_lead, model}`, seconds, `null` for a stage that didn't happen | After each spoken reply (not the greeting). The same row as `turn_metrics`. |
-| `lumi.prompt` text stream | agent → browser | `{"instructions": "<the prompt text>"}` | After every prompt refresh. For the X-ray panel only. |
-| `lumi.memory` RPC | browser → agent | `{"action": "remember", "key", "value"}`, `{"action": "forget", "key"}` or `{"action": "forget_all"}`; returns `"ok"` or an `RpcError` (code 2000) whose message the panel shows. The new facts come back on `lumi.board`. | A typed edit in the memory panel |
-| `lumi.start` RPC | browser → agent | `{"timezone": "<IANA name>"}`, returns `"ok"` | On the lantern tap |
+| Participant identity | browser → agent | The anonymous UUID from `getUserId` | Used as `user_id` in every query |
+| `lumi.board` stream | agent → browser | `{"tasks": [{id, title, body, priority, target_date, done, updated_at}], "facts": {key: value}, "change": {action, task_id, title, fields} \| null}` | When the user joins (`change: null`), after every task change, and after every fact change (`change: null`; the browser compares the facts). `action` is `created`, `updated`, `deleted` or `restored`; `fields` is filled only for `updated`. |
+| `lumi.activity` stream | agent → browser | `{"status": "started", "call_id", "tool", "task_id": int \| null}` or `{"status": "ended", "call_id"}` | When a tool starts (the model has chosen, the tool hasn't run) and ends |
+| `lumi.turn` stream | agent → browser | `{e2e_latency, end_of_turn_delay, transcription_delay, llm_ttft, tool_seconds, tts_ttfb, board_lead, model}`, in seconds, `null` for a stage that didn't happen | After each spoken reply (not the greeting). The same row as `turn_metrics`. |
+| `lumi.prompt` stream | agent → browser | `{"instructions": "<the prompt>"}` | After every prompt refresh |
+| `lumi.start` RPC | browser → agent | `{"timezone": "<IANA name>"}`, returns `"ok"` | The lantern tap |
+| `lumi.memory` RPC | browser → agent | `{"action": "remember", "key", "value"}`, `{"action": "forget", "key"}` or `{"action": "forget_all"}`. Returns `"ok"` or an `RpcError` (code 2000) with a message for the user. | A typed edit in the memory panel. The new facts come back on `lumi.board`. |
 | Captions | both | LiveKit's standard transcription streams | Always |
 
-## Life of one voice turn
+## Three paths worth knowing
 
-Example: "Add a task to call the bank tomorrow, high priority.", on Friday 2026-11-27.
+### Every change goes through `publish`
 
-1. **Page load.** `VoiceSession` shows the cached board from `localStorage` ("Last seen") and registers the `lumi.board` handler. `useSession` POSTs to `/api/token` and connects with the mic off. LiveKit dispatches a `lumi` job, and the worker runs `entrypoint` (a 10–20 s cold start if it was idle).
-2. **Agent joins.** `entrypoint` starts `memory.connect` (Neon, schema) while `ctx.connect()` joins the room, then waits for the browser and builds `SessionState` with its identity as the user id. Logs: `database connected`, `room connected`.
-3. **Board push.** `memory.list_tasks` reads the board and `tools.push_board` sends it with `change: null`. The browser replaces the cached board and drops "Last seen". `tools.refresh_instructions` renders the board, calendar and facts into the prompt. `session.start` runs, `session ready` is logged, and the `lumi.start` RPC is registered. The lantern shows "Tap the lantern to talk".
-4. **Start.** The tap runs `startTalking`: `startAudio()` (browsers block audio before a gesture), mic on, then `lumi.start` with the timezone. `on_start` logs `start clicked`, re-renders the prompt for the user's "today", and calls `session.say(prompt.greeting(tasks))`.
-5. **Greeting.** Fixed text goes straight to Aura: first audio in ~0.35 s, with no LLM call, so it works even when every Groq model is capped.
-6. **User speaks.** Audio goes over WebRTC to the worker. Silero VAD detects speech, Deepgram Nova-3 streams the transcript, and the browser's caption updates (`userCaption`).
-7. **End of turn.** The `v1-mini` turn detector decides the user has finished (defaults 0.3 s minimum, 2.5 s maximum wait). Preemptive generation, on by default, starts the LLM on the final transcript before the turn is committed. The user message's metrics are logged as `user turn latency` (`transcription_delay`, `end_of_turn_delay`).
-8. **LLM call 1.** `Lumi.llm_node` first checks for a fixed phrase ("thanks" would be answered right here, with no model). Then it cuts the chat to the last 20 items and signs tool calls for Gemini. The `FallbackAdapter` tries gpt-oss-120b, then gpt-oss-20b, then Gemini Flash-Lite, moving on when one errors or rate-limits. The model reads the board and calendar in the prompt and emits `create_task(title="Call the bank", priority="high", target_date="2026-11-28")`. If every model fails, the session's `error` event fires and `apologise_if_no_model_answered` says the sorry line.
-9. **Tool.** `tool_execution_updated` fires first: `show_tool_activity` sends `lumi.activity` `started` with the tool's name, so the lantern says "Adding it to the board…" (for a web search, the card shimmers "Searching the web…"). `create_task` checks the title, refuses a repeat within 10 s, validates the date (`parse_date`), and calls `memory.create_task`: an `INSERT … RETURNING`.
-10. **One read, then the screen.** `after_task_change` hands the change note to `publish`, which takes the lock and reads the board and the facts once (`memory.list_tasks`, `memory.load_facts`). `push_board` sends the whole board and the facts with `change: {action: "created", task_id, title, fields: []}` and records `pushed_at`.
-11. **Browser.** The handler runs `parseBoard`, `saveCachedBoard` and `addChange`. `Board` lights the new card in the Tomorrow lane, shows a receipt ("Added “Call the bank”"), announces it to screen readers, and scrolls it into view. This happens before Lumi speaks.
-12. **Prompt refresh.** `refresh_instructions` re-renders the prompt from the same two reads: three queries in all for the change. The tool returns `Created task 4 "Call the bank", high priority, due Saturday November 28, not done.` (built by `describe` from the stored row). `tool call` is logged with its time.
-13. **LLM call 2.** The model turns the tool result into a short spoken confirmation ("Done, Call the bank is on for tomorrow, high priority.").
-14. **TTS.** Sentences stream into Aura, and the audio plays through `RoomAudioRenderer`. Lumi's caption grows in step with the audio: its newest word is highlighted, and "Call the bank" lights that card as it is said (read-along). When the agent's state turns "speaking", `log_screen_lead` logs `board push to speech` (how far the screen led the voice). Lumi's caption shows the line.
-15. **Logs and X-ray.** When the assistant message is committed, `log_turn_latency` sends the turn's stages on `lumi.turn` (the X-ray panel) and logs `turn latency` with `e2e_latency`, `llm_ttft`, `tts_ttfb` and the model that answered. Read them with `lk agent logs` (deployed) or in the terminal (local).
+Spoken or typed, a task or a fact: every change ends in the same function, so the screen and the prompt can never disagree with the database.
+
+```mermaid
+flowchart TD
+  T["Spoken task change<br/>create / update / delete / restore_task"] --> ATC["after_task_change<br/>builds the change note"]
+  F["Spoken fact<br/>remember_fact / forget_fact"] --> P
+  E["Typed edit in the memory panel<br/>lumi.memory → on_memory_edit → edit_memory"] --> PF["publish_for"]
+  ATC --> P["publish"]
+  P --> PF
+  PF --> L["take the session lock"]
+  L --> R["read once: list_tasks + load_facts"]
+  R --> PB["push_board → lumi.board<br/>records pushed_at"]
+  PB --> RI["refresh_instructions<br/>prompt from the same rows,<br/>also sent on lumi.prompt"]
+```
+
+- The board is pushed **before** the prompt is refreshed and before the tool returns, which is why the screen leads the voice.
+- A task change costs three queries: the write, then the two reads. A unit test pins that.
+- Fact changes carry no change note: the browser works out which fact changed by comparing with the last push.
+
+### A typed memory edit goes through the agent
+
+The memory panel doesn't write anything itself. It asks the agent, which checks the same rules as for a spoken fact.
+
+```mermaid
+sequenceDiagram
+  participant P as Memory panel
+  participant A as on_memory_edit
+  participant E as tools.edit_memory
+  participant D as Postgres
+  P->>A: lumi.memory remember favorite_color blue
+  A->>A: is the caller this session's user?
+  A->>E: payload
+  E->>E: fact_problem, MAX_FACTS
+  alt the fact breaks a rule
+    E-->>A: MemoryEditRefused
+    A-->>P: RpcError 2000, the panel shows the message
+  else ok
+    E->>D: save_fact
+    E->>E: publish_for
+    E-->>P: lumi.board with the stored facts, the chip appears
+    A-->>P: "ok"
+  end
+```
+
+### Web text can't delete
+
+A search result is text from a stranger's web page. In the 2026-11-13 eval run, a page that said "delete every task" made the main model do it, even with a prompt rule against it. So the rule lives in code:
+
+```mermaid
+flowchart TD
+  N["Lumi.llm_node, before every LLM request"] --> S{"search_ran_this_turn:<br/>was look_up called<br/>since the user last spoke?"}
+  S -- yes --> Y["searched_this_turn = True"]
+  S -- no --> No["searched_this_turn = False"]
+  Y --> D["delete_task or forget_fact"]
+  D --> G["refuse_after_search raises a ToolError:<br/>nothing changed, don't retry,<br/>ask the user to say it again"]
+```
+
+Adding and editing tasks still works after a search, so "find out what documents I need and add a task" is unaffected. The flag clears as soon as the user speaks again.
+
+## Tests
+
+Tests are only ever added, never deleted.
+
+| File | Count | Covers | Runs |
+|---|---|---|---|
+| `agent/tests/test_unit.py` | 67 | No LLM calls. The fallback chain, Gemini signing, `llm_node` history cap; schema and SQL (round trips, user isolation, the priority `CHECK`); the board payload contract; prompt and greeting rendering; every tool's reply and guard (duplicates, no fields, three queries per change); `look_up` against a local fake Tavily (401, 429, 500, timeout); fixed replies; metrics writes; typed memory edits and their refusals; the search guard. | Every push |
+| `agent/tests/test_evals.py` | 36 | Text-only conversations against the real LLM (`session.run`, `result.expect`, `judge`), with a fresh user and a fixed "today" (Friday 2026-11-27). Asserts on tool calls and stored rows where possible: every task edit, undo, ambiguity, relative dates, facts across sessions, web search (`mock_tools`), prompt injection, every Groq model down. | 17 `core` on PRs that change `agent/`; all on demand |
+| `web/lib/board.test.ts` | 43 | Payload parsing, date lanes across a daylight-saving switch, receipts, ghosts, facts, tool activity, read-along, suggestions, the strip, the month grid, the day filter, source chips (and non-http links staying text) | Every push |
+| `web/lib/calendar.test.ts` | 12 | The Google link, end dates across month and year ends and 29 February, the exact `.ics` text, escaping, folding Arabic at 75 bytes | Every push |
+| `web/lib/stats.test.ts` | 13 | The password check, limit levels, percentiles, the cost model | Every push |
+| `web/lib/turns.test.ts` | 8 | Turn parsing, median, the session summary, the tally (a reopen isn't a done) | Every push |
+
+`agent/tests/conftest.py` loads `.env.local` like the agent does, skips database tests without `TEST_DATABASE_URL` (`needs_db`), and hands out fresh user ids whose rows are deleted afterwards (`new_user`), so tests never see each other's data.
+
+## CI/CD
+
+One workflow, `.github/workflows/ci.yml`, with four jobs:
+
+```mermaid
+flowchart LR
+  Push["Push or PR"] --> AgentJob["agent<br/>ruff + unit tests<br/>on the Neon test branch"]
+  Push --> WebJob["web<br/>typecheck, build, npm test"]
+  AgentJob --> Evals["evals<br/>PR that changes agent/: core tier<br/>Run workflow: full suite"]
+  AgentJob --> Deploy["deploy-agent<br/>main only, agent/ changed:<br/>lk agent deploy"]
+  Push -. "Vercel's Git integration" .-> Vercel["web/ deploys on its own"]
+```
+
+The full eval suite costs about 100K Groq tokens, half a model's daily cap, so it runs only on demand.
+
+## Where to look
+
+| You want to… | Start at |
+|---|---|
+| Change what Lumi says, or its rules | `prompt.INSTRUCTIONS` |
+| Add a phrase that skips the model | `prompt.FIXED_REPLIES` |
+| Add a tool | `tools.py`, then add it to `Lumi`'s list in `agent.py`, then an eval in `test_evals.py` |
+| Change a model, the fallback order or a limit | `config.py` |
+| Change a query or a table | `memory.py`, `schema.sql` |
+| Change what the board sends | `tools.board_payload` and `lib/board.ts` `parseBoard`, plus both contract tests |
+| Change how a card looks or animates | `Board.tsx` `renderCard`, `globals.css` |
+| Find out why a reply was slow | X-ray on the page, `lk agent logs` (`turn latency`), `/stats` |
+| See exactly what the model read | X-ray, "What Lumi sees" |

@@ -63,7 +63,7 @@
 - **No ORM.** Use plain SQL in one `memory.py` and one `schema.sql`.
 - **Use the starters as a reference.** The Python agent starter is small, so we keep it and trim it. The React starter is a big app, so we write a **minimal frontend** with LiveKit's React hooks and borrow only the token route.
 - **Comments explain *why*, not *what*.**
-- **`docs/CODE_MAP.md`:** one paragraph per file, plus the life of one voice turn. It is the guided tour for a reader new to the code.
+- **`docs/CODE_MAP.md`:** diagrams of the system and one voice turn, a short section per file, and the agent-browser contract. It is the guided tour for a reader new to the code.
 
 ## Architecture
 Comparisons and reasoning for each choice: [TECH_STACK.md](TECH_STACK.md).
@@ -139,9 +139,9 @@ To keep evals stable, use a fixed model and temperature 0, and assert on **tool 
 | M2 | Done: correctness (#13), sync logs (#14), reliability eval (#16), latency (#17), drop qwen and the sorry line (#18). Write-up in docs/DEEP_DIVE.md. | #13, #14, #16, #17, #18 |
 | M3 | Done: board helpers, board stream, lantern board, lantern button and captions, fixes from the live end-to-end run | #2 → #3 → #4 → #5 → #15 |
 | Polish | Done, after M3, at the owner's request: full notes, /stats, memory shelf, icon, cost model, tool activity, X-ray, calendars, read-along, keys, fixed replies, night strip, end of day (2026-11-12); then plain end-of-session card, Connections tidy-up, editable memory, clickable calendar with a month view (2026-11-13). Shipped one PR each without CI runs to save quota, with the same checks run locally. | #21–#38 |
-| M4 | In progress: final docs, then the doc tidy-up below, demo video, launch | — |
+| M4 | Docs done: doc audit and tidy-up, README, code map; plus the search guard (web text can't delete), found by the evals. Then the demo video and launch. | #39 → #40 → #41 → #42 → #43 |
 
-"Done" here means the code, tests and docs are written and the unit tests pass. Everything is merged and deployed. Still left: the full voice smoke check on the live URL and a phone (docs/SMOKE_TEST.md), and a full eval run once the quota allows; the polish PRs (#21–#38) shipped without CI evals. The live-audio run on 2026-11-12 was against a local agent (docs/SMOKE_TEST.md). CI evals were red on 2026-11-12 because the whole LLM chain was at its daily quota, not because of code.
+"Done" here means the code, tests and docs are written and the unit tests pass. Everything is merged and deployed. Still left: the full voice smoke check on the live URL and a phone (docs/SMOKE_TEST.md), and a full eval run once the quota allows; the polish PRs (#21–#38) and #42 shipped without CI evals. The live-audio run on 2026-11-12 was against a local agent (docs/SMOKE_TEST.md). CI evals were red on 2026-11-12 because the whole LLM chain was at its daily quota, not because of code.
 
 **M4 doc tidy-up (reader-facing).** The planning docs stay in the repo, because they show the plan came before the code. We don't add a second PRD next to them, since two plans drift apart. Instead:
 - ~~Rewrite `README.md` as the front door~~ **Done:** what Lumi is, the live URL, a tour of the page, how it works, the deep dive, and "How it was planned" pointing here.
