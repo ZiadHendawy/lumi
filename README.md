@@ -52,7 +52,7 @@ The agent is the only thing that touches the database. After every change it rea
 |---|---|
 | `agent/` | The Python LiveKit Agents worker: persona, tools, SQL, tests and evals |
 | `web/` | The Next.js app and the `/api/token` route |
-| `docs/` | The deep dives, a guided code tour, the plan and decision log, the stack comparison, and the smoke checklist |
+| `docs/` | Account setup, the deep dives, a guided code tour, the plan and decision log, the stack comparison, and the smoke checklist |
 
 New to the code? Start with [docs/CODE_MAP.md](docs/CODE_MAP.md).
 
@@ -66,7 +66,7 @@ New to the code? Start with [docs/CODE_MAP.md](docs/CODE_MAP.md).
 
 ### 1. Get your own keys
 
-Every collaborator uses their own keys, and every service here has a free tier.
+Every collaborator uses their own keys, and every service here has a free tier. **New to these services?** [docs/SETUP.md](docs/SETUP.md) walks through signing up for each one, where to find each key, and which `.env.local` line it goes on.
 
 | Variable | Required? | Where to get it | Goes in |
 |---|---|---|---|
