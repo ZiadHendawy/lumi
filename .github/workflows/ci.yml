@@ -101,6 +101,13 @@ jobs:
           if [ "$before" = "0000000000000000000000000000000000000000" ] || ! git diff --quiet "$before" HEAD -- .; then
             echo "agent=true" >> "$GITHUB_OUTPUT"
           fi
+          # A fork or a fresh clone has no LiveKit secrets yet: skip the deploy instead of failing.
+          if [ -z "$LIVEKIT_API_KEY" ]; then
+            echo "agent=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::LIVEKIT_* secrets are not set, so the agent deploy is skipped."
+          fi
+        env:
+          LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
       - name: Install LiveKit CLI (pinned)
         if: steps.changed.outputs.agent == 'true'
         run: |
