@@ -56,7 +56,9 @@ The agent is the only thing that touches the database. After every change it rea
 
 New to the code? Start with [docs/CODE_MAP.md](docs/CODE_MAP.md).
 
-## Run it yourself
+## Run it locally
+
+This is how you develop and test on your own machine, with your own keys. To get a change into the real app, see [How changes ship](#how-changes-ship).
 
 ### 0. Install the tools
 
@@ -77,7 +79,7 @@ Every collaborator uses their own keys, and every service here has a free tier. 
 | `DATABASE_URL` | **Yes** | [Neon](https://console.neon.tech): create a project and copy its connection string | `agent/` |
 | `TAVILY_API_KEY` | For web search | [Tavily](https://app.tavily.com). Without it, the board works, but "find out..." requests fail | `agent/` |
 | `TEST_DATABASE_URL` | No | A second Neon branch (Neon console → **Branches** → new branch, e.g. `test`), so tests never touch your real board. Without it, the database tests are skipped | `agent/` |
-| `LIVEKIT_AGENT_ID` | Only to deploy | Printed by `lk agent create` (see [Deploy your own](#deploy-your-own)) | `agent/` |
+| `LIVEKIT_AGENT_ID` | No (maintainer and forks) | Printed by `lk agent create`. Only for deploying (see [Running your own copy](#running-your-own-copy-forks)) | `agent/` |
 | `STATS_*`, `DEEPGRAM_USAGE_KEY` | No | Only for the password-protected `/stats` page. See the comments in `web/.env.example` | `web/` |
 
 ### 2. Fill in your env files
@@ -117,7 +119,38 @@ npm install
 npm run dev                               # open http://localhost:3000 and tap the lantern
 ```
 
-### Deploy your own
+## How changes ship
+
+There is one Lumi app: one Vercel site and one LiveKit agent, both run by the maintainer. Collaborators never deploy and never get the production keys. Your changes reach the app through GitHub:
+
+```
+your branch ──pull request──▶ review, merge to main
+                                    │
+               ┌────────────────────┴────────────────────┐
+               ▼                                         ▼
+  Vercel builds and deploys web/            CI's deploy-agent job runs
+  (keys: Vercel's environment variables)    `lk agent deploy` for agent/ changes
+                                            (keys: GitHub repository secrets)
+```
+
+1. **Run it locally with your own keys** (the steps above). They're for development only: your local agent and web app use your own LiveKit project and database, so testing never touches the real board or its quotas.
+2. **Push a branch to this repo and open a pull request.** If you have write access, push to this repo rather than a fork: GitHub doesn't give secrets to pull requests from forks, so the evals CI runs on PRs would fail there.
+3. **After review, it's merged to `main`.** Vercel deploys the web app within a minute or two. A change under `agent/` is deployed by CI, or by the maintainer by hand if CI's deploy is turned off.
+
+**Need a new key or setting?** Add it, empty, to the right `.env.example` with a comment, and say so in the pull request. The maintainer adds the real value to Vercel or the agent's LiveKit secrets before merging. Never put a production key in a file, an issue or a chat.
+
+**Where the production keys live** (maintainer only):
+
+| Keys | Stored in | Used for |
+|---|---|---|
+| `LIVEKIT_*`, `STATS_*`, `TAVILY_API_KEY` | Vercel → **Settings → Environment Variables** | the web app and `/stats` |
+| Provider keys and `DATABASE_URL` | the agent's LiveKit Cloud secrets (`lk agent update-secrets`) | the deployed agent |
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_AGENT_ID`, plus `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL` for evals | GitHub → **Settings → Secrets and variables → Actions** | CI's agent deploy and evals |
+
+## Running your own copy (forks)
+
+Only if you want a separate copy of Lumi on your own accounts. To ship to the main app, open a pull request instead (see [How changes ship](#how-changes-ship)).
+
 
 The agent's deploy target comes from `agent/.env.local`: `LIVEKIT_URL` picks the project and `LIVEKIT_AGENT_ID` picks the agent. There's no committed `livekit.toml`. Each command below loads `.env.local` with `uv run --env-file`, so the `lk` CLI acts on the project in your file, not on whichever project it was last set to. Run them from `agent/`.
 
@@ -141,7 +174,7 @@ The agent's deploy target comes from `agent/.env.local`: `LIVEKIT_URL` picks the
    uv run --env-file .env.local -- sh -c 'lk agent deploy --id "$LIVEKIT_AGENT_ID"'
    ```
 
-CI can do step 3 on every push to `main` once the repository has `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and `LIVEKIT_AGENT_ID` secrets. Without them, the deploy step is skipped.
+In your fork, CI can do step 3 on every push to `main` once the repository has `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and `LIVEKIT_AGENT_ID` secrets. Without them, the deploy step is skipped.
 
 **Web:** import the repo into Vercel with `web/` as the root directory, and add the three `LIVEKIT_*` variables under **Settings → Environment Variables**. For `/stats`, also add `STATS_PASSWORD`, `STATS_DATABASE_URL` (a read-only role) and `TAVILY_API_KEY`.
 

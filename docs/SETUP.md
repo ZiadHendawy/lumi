@@ -1,5 +1,7 @@
 # Setting up your accounts
 
+**These are your own keys, for running Lumi on your machine.** They never reach the shared app. Its production keys stay in the maintainer's Vercel, LiveKit and GitHub settings and are never shared. To ship a change, open a pull request: see [How changes ship](../README.md#how-changes-ship).
+
 Lumi uses six services. Each one has a free tier. This page covers signing up, where each key is, and which line of which `.env.local` it goes on. Fill in `agent/.env.local` and `web/.env.local` as you go. The [README](../README.md#2-fill-in-your-env-files) shows how to create them.
 
 Dashboards change. If a button below has moved, the official page linked in each section has the current steps.
@@ -20,7 +22,7 @@ Dashboards change. If a button below has moved, the official page linked in each
    - the API secret into **`LIVEKIT_API_SECRET`**
 4. Put the same three values in **both** `agent/.env.local` and `web/.env.local`: the web app signs room tokens that the agent's project has to accept.
 
-You don't need `lk cloud auth` for local development. It's only for linking the CLI to your account. The deploy commands in the README read these three values from `.env.local` instead.
+You don't need `lk cloud auth` or the LiveKit CLI for local development. With your own LiveKit project, your local agent and web app talk only to each other, never to the shared app.
 
 Official docs: [LiveKit CLI authentication](https://docs.livekit.io/reference/developer-tools/livekit-cli/auth/)
 
