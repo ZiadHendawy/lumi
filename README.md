@@ -101,7 +101,12 @@ npm run dev                               # http://localhost:3000
 ```
 
 **Deploying:**
-- **Agent:** `agent/livekit.toml` holds placeholders. Run `lk agent create` in `agent/` to create your own agent and fill the file in, then deploy with `lk agent deploy`. Keep the provider keys and `DATABASE_URL` in LiveKit Cloud secrets (`lk agent update-secrets`). CI deploys on pushes to `main` once the `LIVEKIT_*` repository secrets are set. Without them, the deploy step is skipped.
+- **Agent:** the LiveKit project and agent come from `agent/.env.local`, not from a committed `livekit.toml`. The first time, run `lk agent create --region us-east .` in `agent/` and copy the `CA_...` ID it prints into `LIVEKIT_AGENT_ID`. It also writes a `livekit.toml`, which git ignores. Then give the agent its keys: `lk agent update-secrets --id <CA_...> --secrets DEEPGRAM_API_KEY=...` and the same for `GROQ_API_KEY`, `GEMINI_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL`. LiveKit sets the `LIVEKIT_*` values itself. After that, deploy with:
+  ```bash
+  cd agent
+  uv run --env-file .env.local -- sh -c 'lk agent deploy --id "$LIVEKIT_AGENT_ID"'
+  ```
+  The deployed agent reads its keys from LiveKit Cloud secrets. Change them with `lk agent update-secrets`. CI deploys on pushes to `main` once the `LIVEKIT_*` and `LIVEKIT_AGENT_ID` repository secrets are set. Without them, the deploy step is skipped.
 - **Web:** import the repo into Vercel with `web/` as the root directory and the same three `LIVEKIT_*` variables. `/stats` also needs `STATS_PASSWORD`, `STATS_DATABASE_URL` (a read-only role) and `TAVILY_API_KEY`.
 
 ## Tests

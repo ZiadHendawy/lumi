@@ -18,3 +18,6 @@ next-env.d.ts
 # misc
 .DS_Store
 .vercel
+
+# `lk agent create` writes this. Deploys take the project and agent from agent/.env.local instead.
+agent/livekit.toml

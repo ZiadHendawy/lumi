@@ -116,9 +116,11 @@ jobs:
           echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
       - name: Deploy to LiveKit Cloud
         if: steps.changed.outputs.agent == 'true'
-        # livekit.toml names the agent; these credentials authorize the deploy.
-        run: lk agent deploy --yes
+        # The URL picks the project, the key and secret authorize the deploy, and the ID
+        # picks the agent (livekit.toml isn't committed).
+        run: lk agent deploy --yes --id "$LIVEKIT_AGENT_ID"
         env:
+          LIVEKIT_AGENT_ID: ${{ secrets.LIVEKIT_AGENT_ID }}
           LIVEKIT_URL: ${{ secrets.LIVEKIT_URL }}
           LIVEKIT_API_KEY: ${{ secrets.LIVEKIT_API_KEY }}
           LIVEKIT_API_SECRET: ${{ secrets.LIVEKIT_API_SECRET }}

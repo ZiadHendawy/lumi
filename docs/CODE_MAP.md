@@ -258,7 +258,7 @@ Every provider and tunable in one place.
 |---|---|
 | `bench_latency.py` | Times each model with Lumi's real prompt and tools (`bench_llm`, `--models`, `--bare` for prompt size), Neon round trips (`bench_db`), the board push (`bench_push`) and Aura's first audio (`bench_tts`). Speech-to-text and end of turn need a microphone, so they aren't here. |
 | `Dockerfile` | The image LiveKit Cloud builds. Dependencies in their own cached layer, model weights baked in so a cold start downloads nothing, runs as a non-root user. |
-| `livekit.toml` | Binds this folder to the LiveKit Cloud project and agent, so `lk agent deploy`, `logs` and `status` need no flags. No secrets: those live in LiveKit Cloud. |
+| `livekit.toml` | Not committed (git ignores it). `lk agent create` writes it to bind this folder to a LiveKit project and agent. Deploys take the project from `LIVEKIT_URL` and the agent from `LIVEKIT_AGENT_ID` in `.env.local` instead, so each collaborator can use their own. |
 
 ## The web app, file by file
 
