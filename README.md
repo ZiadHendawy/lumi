@@ -58,56 +58,92 @@ New to the code? Start with [docs/CODE_MAP.md](docs/CODE_MAP.md).
 
 ## Run it yourself
 
+### 0. Install the tools
+
+- [uv](https://docs.astral.sh/uv/getting-started/installation/) for the Python agent (it installs Python 3.12 for you)
+- [Node.js 24](https://nodejs.org/) for the web app
+- The [LiveKit CLI](https://github.com/livekit/livekit-cli) (`brew install livekit-cli` on macOS). You only need it for deploying.
+
 ### 1. Get your own keys
 
-Every collaborator uses their own keys. They're all free, and none of these services needs a card:
+Every collaborator uses their own keys, and every service here has a free tier.
 
-| Variable | Where to get it | Used by |
-|---|---|---|
-| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | [LiveKit Cloud](https://cloud.livekit.io): create a project, then **Settings → API keys** | agent and web |
-| `DEEPGRAM_API_KEY` | [Deepgram console](https://console.deepgram.com) (speech to text and the voice) | agent |
-| `GROQ_API_KEY` | [Groq console](https://console.groq.com/keys) (the main LLMs) | agent |
-| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) (the fallback LLM) | agent |
-| `TAVILY_API_KEY` | [Tavily](https://app.tavily.com) (web search) | agent |
-| `DATABASE_URL` | [Neon](https://console.neon.tech): create a project and copy its connection string | agent |
-| `TEST_DATABASE_URL` *(optional)* | A second Neon branch, such as `test`, so tests never touch your real board | agent tests |
+| Variable | Required? | Where to get it | Goes in |
+|---|---|---|---|
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | **Yes** | [LiveKit Cloud](https://cloud.livekit.io): create a project, then **Settings → API keys** | `agent/` and `web/` |
+| `DEEPGRAM_API_KEY` | **Yes** | [Deepgram console](https://console.deepgram.com) (speech to text and the voice) | `agent/` |
+| `GROQ_API_KEY` | **Yes** | [Groq console](https://console.groq.com/keys) (the main LLMs) | `agent/` |
+| `GEMINI_API_KEY` | **Yes** | [Google AI Studio](https://aistudio.google.com/apikey) (the fallback LLM) | `agent/` |
+| `DATABASE_URL` | **Yes** | [Neon](https://console.neon.tech): create a project and copy its connection string | `agent/` |
+| `TAVILY_API_KEY` | For web search | [Tavily](https://app.tavily.com). Without it, the board works, but "find out..." requests fail | `agent/` |
+| `TEST_DATABASE_URL` | No | A second Neon branch (Neon console → **Branches** → new branch, e.g. `test`), so tests never touch your real board. Without it, the database tests are skipped | `agent/` |
+| `LIVEKIT_AGENT_ID` | Only to deploy | Printed by `lk agent create` (see [Deploy your own](#deploy-your-own)) | `agent/` |
+| `STATS_*`, `DEEPGRAM_USAGE_KEY` | No | Only for the password-protected `/stats` page. See the comments in `web/.env.example` | `web/` |
 
 ### 2. Fill in your env files
 
-Each app has a `.env.example` with every variable it reads, empty, and a comment saying where each one comes from. Copy both, then paste your keys after the `=` signs:
+Each app has a `.env.example` listing every variable it reads, with empty values and a comment saying where each one comes from. Copy both from the repo root:
 
 ```bash
 cp agent/.env.example agent/.env.local
 cp web/.env.example web/.env.local
 ```
 
-- Leave a line empty if you don't have that key. Don't write a placeholder: an empty value means "not set". For example, an empty `TEST_DATABASE_URL` skips the database tests.
-- `web/.env.local` needs only the three `LIVEKIT_*` values, the same ones as the agent. The `STATS_*` lines matter only if you want the `/stats` page.
-- `.env.local` files are ignored by git, so your keys stay on your machine. Never commit them, and never put a real key in a `.env.example`.
+Then paste your keys after the `=` signs:
+
+- **`agent/.env.local`:** every **Yes** row above, plus any optional ones you have.
+- **`web/.env.local`:** only the three `LIVEKIT_*` values, the same as the agent's.
+- Leave optional lines empty if you don't use them. Don't type placeholder text like `your-key-here`: the code treats any text as a real value, while an empty value means "not set".
+- Both `.env.local` files are ignored by git, so your keys stay on your machine. Never commit them, and never put a real key in a `.env.example`.
 
 The agent creates its database tables the first time it connects.
 
 ### 3. Start the agent and the web app
 
+Each one keeps running, so use two terminals, both starting from the repo root.
+
+Terminal 1, the agent:
 ```bash
 cd agent
 uv sync
 uv run -m livekit.agents download-files   # VAD and turn-detector weights, once
-uv run agent.py dev                       # joins your LiveKit project
-
-cd web
-npm install
-npm run dev                               # http://localhost:3000
+uv run agent.py dev                       # joins the LiveKit project in .env.local
 ```
 
-**Deploying:**
-- **Agent:** the LiveKit project and agent come from `agent/.env.local`, not from a committed `livekit.toml`. The first time, run `lk agent create --region us-east .` in `agent/` and copy the `CA_...` ID it prints into `LIVEKIT_AGENT_ID`. It also writes a `livekit.toml`, which git ignores. Then give the agent its keys: `lk agent update-secrets --id <CA_...> --secrets DEEPGRAM_API_KEY=...` and the same for `GROQ_API_KEY`, `GEMINI_API_KEY`, `TAVILY_API_KEY` and `DATABASE_URL`. LiveKit sets the `LIVEKIT_*` values itself. After that, deploy with:
-  ```bash
-  cd agent
-  uv run --env-file .env.local -- sh -c 'lk agent deploy --id "$LIVEKIT_AGENT_ID"'
-  ```
-  The deployed agent reads its keys from LiveKit Cloud secrets. Change them with `lk agent update-secrets`. CI deploys on pushes to `main` once the `LIVEKIT_*` and `LIVEKIT_AGENT_ID` repository secrets are set. Without them, the deploy step is skipped.
-- **Web:** import the repo into Vercel with `web/` as the root directory and the same three `LIVEKIT_*` variables. `/stats` also needs `STATS_PASSWORD`, `STATS_DATABASE_URL` (a read-only role) and `TAVILY_API_KEY`.
+Terminal 2, the web app:
+```bash
+cd web
+npm install
+npm run dev                               # open http://localhost:3000 and tap the lantern
+```
+
+### Deploy your own
+
+The agent's deploy target comes from `agent/.env.local`: `LIVEKIT_URL` picks the project and `LIVEKIT_AGENT_ID` picks the agent. There's no committed `livekit.toml`. Each command below loads `.env.local` with `uv run --env-file`, so the `lk` CLI acts on the project in your file, not on whichever project it was last set to. Run them from `agent/`.
+
+> **Check your shell first:** a variable already set in your shell wins over `.env.local`. If `echo $LIVEKIT_URL` prints anything (say, from another project in your `.zshrc`), run `unset LIVEKIT_URL LIVEKIT_API_KEY LIVEKIT_API_SECRET` before these commands. Otherwise they act on that other project.
+
+1. **Create the agent (once):**
+   ```bash
+   uv run --env-file .env.local -- lk agent create --region us-east .
+   ```
+   Copy the `CA_...` ID it prints into `LIVEKIT_AGENT_ID` in `.env.local`. It also writes a `livekit.toml`, which git ignores.
+2. **Give the deployed agent its keys (once, and again whenever a key changes):**
+   ```bash
+   uv run --env-file .env.local -- sh -c 'lk agent update-secrets --id "$LIVEKIT_AGENT_ID" \
+     --secrets "DEEPGRAM_API_KEY=$DEEPGRAM_API_KEY" --secrets "GROQ_API_KEY=$GROQ_API_KEY" \
+     --secrets "GEMINI_API_KEY=$GEMINI_API_KEY" --secrets "TAVILY_API_KEY=$TAVILY_API_KEY" \
+     --secrets "DATABASE_URL=$DATABASE_URL"'
+   ```
+   The values come from `.env.local`, so they never appear in your shell history. LiveKit sets the `LIVEKIT_*` values itself.
+3. **Deploy (after every change to `agent/`):**
+   ```bash
+   uv run --env-file .env.local -- sh -c 'lk agent deploy --id "$LIVEKIT_AGENT_ID"'
+   ```
+
+CI can do step 3 on every push to `main` once the repository has `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` and `LIVEKIT_AGENT_ID` secrets. Without them, the deploy step is skipped.
+
+**Web:** import the repo into Vercel with `web/` as the root directory, and add the three `LIVEKIT_*` variables under **Settings → Environment Variables**. For `/stats`, also add `STATS_PASSWORD`, `STATS_DATABASE_URL` (a read-only role) and `TAVILY_API_KEY`.
 
 ## Tests
 
