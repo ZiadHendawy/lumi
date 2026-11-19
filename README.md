@@ -58,21 +58,47 @@ New to the code? Start with [docs/CODE_MAP.md](docs/CODE_MAP.md).
 
 ## Run it yourself
 
-You need free accounts on LiveKit Cloud, Deepgram, Groq, Google AI Studio (Gemini), Neon and Tavily. Everything here fits in their free tiers. The agent creates its tables on first connect.
+### 1. Get your own keys
 
-1. **Agent:** copy `agent/.env.example` to `agent/.env.local` and fill it in. Then:
-   ```bash
-   cd agent
-   uv sync
-   uv run -m livekit.agents download-files   # VAD and turn-detector weights, once
-   uv run agent.py dev
-   ```
-2. **Web:** create `web/.env.local` with `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`. Then:
-   ```bash
-   cd web
-   npm install
-   npm run dev   # http://localhost:3000
-   ```
+Every collaborator uses their own keys. They're all free, and none of these services needs a card:
+
+| Variable | Where to get it | Used by |
+|---|---|---|
+| `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET` | [LiveKit Cloud](https://cloud.livekit.io): create a project, then **Settings → API keys** | agent and web |
+| `DEEPGRAM_API_KEY` | [Deepgram console](https://console.deepgram.com) (speech to text and the voice) | agent |
+| `GROQ_API_KEY` | [Groq console](https://console.groq.com/keys) (the main LLMs) | agent |
+| `GEMINI_API_KEY` | [Google AI Studio](https://aistudio.google.com/apikey) (the fallback LLM) | agent |
+| `TAVILY_API_KEY` | [Tavily](https://app.tavily.com) (web search) | agent |
+| `DATABASE_URL` | [Neon](https://console.neon.tech): create a project and copy its connection string | agent |
+| `TEST_DATABASE_URL` *(optional)* | A second Neon branch, such as `test`, so tests never touch your real board | agent tests |
+
+### 2. Fill in your env files
+
+Each app has a `.env.example` with every variable it reads, empty, and a comment saying where each one comes from. Copy both, then paste your keys after the `=` signs:
+
+```bash
+cp agent/.env.example agent/.env.local
+cp web/.env.example web/.env.local
+```
+
+- Leave a line empty if you don't have that key. Don't write a placeholder: an empty value means "not set". For example, an empty `TEST_DATABASE_URL` skips the database tests.
+- `web/.env.local` needs only the three `LIVEKIT_*` values, the same ones as the agent. The `STATS_*` lines matter only if you want the `/stats` page.
+- `.env.local` files are ignored by git, so your keys stay on your machine. Never commit them, and never put a real key in a `.env.example`.
+
+The agent creates its database tables the first time it connects.
+
+### 3. Start the agent and the web app
+
+```bash
+cd agent
+uv sync
+uv run -m livekit.agents download-files   # VAD and turn-detector weights, once
+uv run agent.py dev                       # joins your LiveKit project
+
+cd web
+npm install
+npm run dev                               # http://localhost:3000
+```
 
 **Deploying:**
 - **Agent:** `agent/livekit.toml` holds placeholders. Run `lk agent create` in `agent/` to create your own agent and fill the file in, then deploy with `lk agent deploy`. Keep the provider keys and `DATABASE_URL` in LiveKit Cloud secrets (`lk agent update-secrets`). CI deploys on pushes to `main` once the `LIVEKIT_*` repository secrets are set. Without them, the deploy step is skipped.
