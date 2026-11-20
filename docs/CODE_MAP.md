@@ -274,9 +274,12 @@ flowchart TD
   Calendar["Calendar.tsx<br/>14-day strip + month"]
   Conn["Connections.tsx<br/>.ics + Google link"]
   token["app/api/token/route.ts"]
-  lib["lib/: board.ts · turns.ts · calendar.ts · userId.ts<br/>pure helpers, no React"]
+  Paused["PausedBoard.tsx<br/>sample board, voice off"]
+  lib["lib/: board.ts · turns.ts · calendar.ts · paused.ts · userId.ts<br/>pure helpers, no React"]
 
   page --> VS
+  page -. "NEXT_PUBLIC_VOICE_PAUSED=1" .-> Paused
+  Paused --> Board
   VS --> Board
   VS --> XRay
   Board --> Memory
@@ -289,22 +292,24 @@ flowchart TD
 
 | File | Lines | Its job |
 |---|---|---|
-| `app/api/token/route.ts` | 38 | Signs a 15-minute LiveKit token for the anonymous id, with the `lumi` agent dispatch inside |
+| `app/api/token/route.ts` | 44 | Refuses while voice is paused; otherwise signs a 15-minute LiveKit token for the anonymous id, with the `lumi` agent dispatch inside |
 | `components/VoiceSession.tsx` | 460 | The whole live session: connects, listens to every stream, holds the state |
 | `components/Board.tsx` | 235 | Draws the board: lanes, cards, change animations, toasts, the day filter |
 | `components/Memory.tsx` | 186 | The memory shelf and the panel to edit it |
 | `components/Calendar.tsx` | 123 | The 14-day strip and the month view; days are clickable |
 | `components/Connections.tsx` | 139 | Calendar export and the "Coming soon" integrations |
 | `components/XRay.tsx` | 82 | The deep dives live: timings, models, screen lead, the prompt |
+| `components/PausedBoard.tsx` | 76 | The page while voice is paused: the real `Board` on sample data, a dimmed lantern |
 | `lib/board.ts` | 487 | Payload types and every board helper |
 | `lib/turns.ts` | 141 | Turn timings and the end-of-session tally |
 | `lib/calendar.ts` | 107 | The Google Calendar link and the `.ics` file |
+| `lib/paused.ts` | 39 | The voice switch and the sample board |
 | `app/stats/page.tsx`, `lib/stats.ts`, `proxy.ts` | | The password-protected `/stats` dashboard |
-| `app/globals.css` | 2263 | "The lantern board": every style and animation |
+| `app/globals.css` | 2309 | "The lantern board": every style and animation |
 
 ### `app/api/token/route.ts`
 
-The only backend. `POST` checks the anonymous id is a UUID, signs a 15-minute token with it as the participant identity, and puts the `lumi` agent dispatch into the token's room config. The server picks the room and the agent, not the client.
+The only backend. `POST` first refuses with a 503 while voice is paused (`voicePaused`), so a direct call can't start a room either. Then it checks the anonymous id is a UUID, signs a 15-minute token with it as the participant identity, and puts the `lumi` agent dispatch into the token's room config. The server picks the room and the agent, not the client.
 
 ### `components/VoiceSession.tsx`
 
@@ -377,6 +382,7 @@ Opens only on request (X, or the button). The last reply's stages (`STAGES`) as 
 | `turns.ts` | `Turn`, `parseTurn`, `STAGES`, `median`, `seconds`, `shortModel`, `sessionSummary`. The tally: `Tally`, `EMPTY_TALLY`, `addToTally`, `tallyLines`, `tallyTotal`. |
 | `calendar.ts` | `calendarTasks`, `googleCalendarUrl` (Google's undocumented prefilled link), `boardToIcs` (RFC 5545, all-day events, stable `UID`s, lines folded at 75 bytes so Arabic is never cut). |
 | `userId.ts` | `getUserId`: a random UUID kept in `localStorage`, the user's only identity. |
+| `paused.ts` | `voicePaused` reads the `NEXT_PUBLIC_VOICE_PAUSED` switch (only `1` or `true` pause, so a missing setting keeps voice on). `demoBoard(now)` builds the sample board, dated from `now` so it never goes overdue. |
 
 Two date rules run through `board.ts` and `calendar.ts`: days are built with the `Date` constructor so month and year ends roll over, and an ISO date is built from local parts, never `toISOString` (which is UTC and can shift the day).
 
@@ -390,7 +396,7 @@ Two date rules run through `board.ts` and `calendar.ts`: days are built with the
 
 | File | What it is |
 |---|---|
-| `page.tsx` | The masthead and `VoiceSession`, loaded client-only because `localStorage` doesn't exist on the server |
+| `page.tsx` | The masthead and `VoiceSession`, loaded client-only because `localStorage` doesn't exist on the server. While voice is paused it shows `PausedBoard` instead, also client-only so the sample dates follow the visitor's today |
 | `layout.tsx` | The HTML shell; the two fonts through `next/font`, served from our own domain |
 | `components/LanternMark.tsx` | The lantern as an inline SVG, shared by the masthead, the home-screen icon and the link preview |
 | `icon.svg` | The browser-tab icon, a static copy of the lantern, since Next serves this file as is |
@@ -498,6 +504,7 @@ Tests are only ever added, never deleted.
 | `web/lib/board.test.ts` | 43 | Payload parsing, date lanes across a daylight-saving switch, receipts, ghosts, facts, tool activity, read-along, suggestions, the strip, the month grid, the day filter, source chips (and non-http links staying text) | Every push |
 | `web/lib/calendar.test.ts` | 12 | The Google link, end dates across month and year ends and 29 February, the exact `.ics` text, escaping, folding Arabic at 75 bytes | Every push |
 | `web/lib/stats.test.ts` | 13 | The password check, limit levels, percentiles, the cost model | Every push |
+| `web/lib/paused.test.ts` | 3 | The voice switch's values, the sample board's lanes across month and year ends | Every push |
 | `web/lib/turns.test.ts` | 8 | Turn parsing, median, the session summary, the tally (a reopen isn't a done) | Every push |
 
 `agent/tests/conftest.py` loads `.env.local` like the agent does, skips database tests without `TEST_DATABASE_URL` (`needs_db`), and hands out fresh user ids whose rows are deleted afterwards (`new_user`), so tests never see each other's data.

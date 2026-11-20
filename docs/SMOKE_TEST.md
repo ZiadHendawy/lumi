@@ -51,6 +51,11 @@ Run on the **live URL** at the end of each milestone, on desktop Chrome and one 
 - [ ] Greeting with gpt-oss capped (local): `GROQ_API_KEY=invalid uv run agent.py dev`, open the local web app and tap the lantern. Lumi still greets you at once (fixed text, no LLM call). "Add a task to call the bank" still works, on Gemini, more slowly.
 - [ ] Sorry line when every model fails (local): `GROQ_API_KEY=invalid GEMINI_API_KEY=invalid uv run agent.py dev`, tap the lantern, say anything. Lumi says "Sorry, my thinking is overloaded for a moment…" and the lantern goes back to listening, instead of sitting on "thinking".
 
+## Voice paused (`NEXT_PUBLIC_VOICE_PAUSED=1`)
+- [ ] The live URL shows the sample board, the "This is a sample board" note and "Voice is paused for now · back soon". The lantern can't be tapped.
+- [ ] DevTools → Network shows no request to `/api/token`. `curl -X POST <url>/api/token` returns 503.
+- [ ] On a phone, the last card scrolls clear of the note and the lantern.
+
 ## Log
 | Date | Milestone | Desktop | Mobile | Cold start | Notes |
 |---|---|---|---|---|---|

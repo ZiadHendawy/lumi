@@ -176,6 +176,7 @@ button {
   transition: opacity 1.6s ease;
 }
 .room-light[data-state='waking'],
+.room-light[data-state='paused'],
 .room-light[data-state='ended'],
 .room-light[data-state='failed'] {
   opacity: 0.22;
@@ -1173,6 +1174,47 @@ button {
   text-align: center;
 }
 
+/* ---------- Voice paused: why the lantern is dim, above it ---------- */
+
+.paused-note {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 520px);
+  padding: 14px 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--glass);
+  text-align: center;
+  animation: caption-in 0.45s ease-out;
+}
+.paused-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-variation-settings: 'SOFT' 100;
+  font-size: 18px;
+  color: var(--paper);
+}
+.paused-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--paper-dim);
+}
+.paused-text a {
+  color: var(--amber);
+  text-underline-offset: 3px;
+}
+/* The note makes this dock taller than the live one, so the board leaves more room under its
+   last card. On a phone the example phrases are dropped to keep the board in view. */
+.app:has(.dock[data-state='paused']) {
+  --dock-space: 430px;
+}
+@media (max-width: 480px) {
+  .dock[data-state='paused'] .hints {
+    display: none;
+  }
+}
+
 /* ---------- End of a session: what got done, in the user's words ---------- */
 
 .receipt {
@@ -1450,16 +1492,20 @@ button {
   pointer-events: none;
 }
 
-.lantern[data-state='waking'] .lantern-flame {
+/* Paused (voice switched off) looks like waking: a low flame, breathing, not inviting a tap. */
+.lantern[data-state='waking'] .lantern-flame,
+.lantern[data-state='paused'] .lantern-flame {
   animation: breathe-dim 3.6s ease-in-out infinite;
 }
-.lantern[data-state='waking'] .lantern-glass {
+.lantern[data-state='waking'] .lantern-glass,
+.lantern[data-state='paused'] .lantern-glass {
   border-color: rgba(255, 222, 170, 0.14);
   box-shadow:
     inset 0 0 14px rgba(255, 180, 90, 0.12),
     0 0 26px rgba(255, 150, 60, 0.12);
 }
-.lantern[data-state='waking'] .lantern-halo {
+.lantern[data-state='waking'] .lantern-halo,
+.lantern[data-state='paused'] .lantern-halo {
   opacity: 0.2;
 }
 @keyframes breathe-dim {

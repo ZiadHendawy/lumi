@@ -2,6 +2,8 @@
 
 > Your to-do list, lit up and run by voice.
 
+> **Voice is paused on the live site for now.** It shows a sample board instead. To talk to Lumi, [run it locally](#run-it-locally) with your own keys.
+
 Lumi is a voice assistant that runs a task board for you. You talk, and the board changes on screen while Lumi is still saying it out loud. Every task is a lantern: the higher its priority, the brighter it glows, and finishing it puts the light out.
 
 **Try saying:**
@@ -146,6 +148,8 @@ your branch ──pull request──▶ review, merge to main
 | `LIVEKIT_*`, `STATS_*`, `TAVILY_API_KEY` | Vercel → **Settings → Environment Variables** | the web app and `/stats` |
 | Provider keys and `DATABASE_URL` | the agent's LiveKit Cloud secrets (`lk agent update-secrets`) | the deployed agent |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_AGENT_ID`, plus `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL` for evals | GitHub → **Settings → Secrets and variables → Actions** | CI's agent deploy and evals |
+
+**Pausing voice on the live site** (maintainer only): set `NEXT_PUBLIC_VOICE_PAUSED=1` in Vercel's environment variables and redeploy. The page then shows a sample board and a dimmed lantern, never connects, and `/api/token` refuses, so visitors use none of the free-tier quota. Delete the variable and redeploy to turn voice back on.
 
 ## Running your own copy (forks)
 

@@ -353,7 +353,7 @@ export type Night = {
 const weekdayFormat = new Intl.DateTimeFormat('en-GB', { weekday: 'short' });
 
 // Built from the local parts, not toISOString(), which would give the UTC day.
-function isoDay(day: Date): string {
+export function isoDay(day: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
 }

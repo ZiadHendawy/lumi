@@ -1,11 +1,17 @@
 // Issues a short-lived LiveKit token and asks LiveKit to dispatch the Lumi agent
 // into the room. Adapted from livekit-examples/agent-starter-react.
 import { AccessToken, RoomAgentDispatch, RoomConfiguration } from 'livekit-server-sdk';
+import { voicePaused } from '@/lib/paused';
 
 const AGENT_NAME = 'lumi'; // must match AGENT_NAME in agent/config.py
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function POST(req: Request) {
+  // Checked first and here, not only in the page: anyone can call this route directly, and a
+  // refused token means no room and no agent, so nothing on the free tiers is used.
+  if (voicePaused(process.env.NEXT_PUBLIC_VOICE_PAUSED)) {
+    return new Response('Voice is paused', { status: 503 });
+  }
   const { LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET } = process.env;
   if (!LIVEKIT_URL || !LIVEKIT_API_KEY || !LIVEKIT_API_SECRET) {
     return new Response('LiveKit env vars are not set', { status: 500 });
