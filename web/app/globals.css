@@ -1174,45 +1174,60 @@ button {
   text-align: center;
 }
 
-/* ---------- Voice paused: why the lantern is dim, above it ---------- */
+/* ---------- Voice paused: the popup that says so on arrival ----------
+   The dialog box itself shares the Connections panel's look (see .connections). */
 
-.paused-note {
+.paused-inner {
   display: grid;
-  gap: 8px;
-  width: min(100%, 520px);
-  padding: 14px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--glass);
+  gap: 12px;
+  padding: 26px 24px 22px;
   text-align: center;
-  animation: caption-in 0.45s ease-out;
 }
 .paused-title {
   margin: 0;
   font-family: var(--font-display);
   font-variation-settings: 'SOFT' 100;
-  font-size: 18px;
-  color: var(--paper);
+  font-weight: 500;
+  font-size: 24px;
 }
 .paused-text {
   margin: 0;
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.55;
   color: var(--paper-dim);
 }
-.paused-text a {
+.paused-text strong {
+  font-weight: 600;
+  color: var(--paper);
+}
+.paused-inner .hints {
+  margin-top: 4px;
+}
+.paused-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 10px 20px;
+  margin-top: 8px;
+}
+.paused-ok {
+  padding: 9px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 181, 71, 0.5);
+  background: rgba(255, 181, 71, 0.14);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--amber);
+  cursor: pointer;
+}
+.paused-ok:hover {
+  background: rgba(255, 181, 71, 0.24);
+}
+.paused-link {
+  font-size: 14px;
   color: var(--amber);
   text-underline-offset: 3px;
-}
-/* The note makes this dock taller than the live one, so the board leaves more room under its
-   last card. On a phone the example phrases are dropped to keep the board in view. */
-.app:has(.dock[data-state='paused']) {
-  --dock-space: 430px;
-}
-@media (max-width: 480px) {
-  .dock[data-state='paused'] .hints {
-    display: none;
-  }
 }
 
 /* ---------- End of a session: what got done, in the user's words ---------- */
@@ -1808,7 +1823,8 @@ button {
 
 /* The panel: a native <dialog>, so the browser draws it in the top layer, above the vignette. */
 .connections,
-.memory-panel {
+.memory-panel,
+.paused-dialog {
   width: min(460px, calc(100vw - 32px));
   max-height: min(86svh, 720px);
   padding: 0; /* padding lives on the inner div, so a click on the dialog itself is the backdrop */
@@ -1823,7 +1839,8 @@ button {
   overflow: auto; /* tall content scrolls inside the panel on a short phone screen */
 }
 .connections::backdrop,
-.memory-panel::backdrop {
+.memory-panel::backdrop,
+.paused-dialog::backdrop {
   background: rgba(6, 5, 4, 0.72);
   backdrop-filter: blur(3px);
 }

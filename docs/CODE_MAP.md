@@ -299,13 +299,13 @@ flowchart TD
 | `components/Calendar.tsx` | 123 | The 14-day strip and the month view; days are clickable |
 | `components/Connections.tsx` | 139 | Calendar export and the "Coming soon" integrations |
 | `components/XRay.tsx` | 82 | The deep dives live: timings, models, screen lead, the prompt |
-| `components/PausedBoard.tsx` | 76 | The page while voice is paused: the real `Board` on sample data, a dimmed lantern |
+| `components/PausedBoard.tsx` | 108 | The page while voice is paused: the real `Board` on sample data, and a popup on arrival that says so (the dim lantern reopens it) |
 | `lib/board.ts` | 487 | Payload types and every board helper |
 | `lib/turns.ts` | 141 | Turn timings and the end-of-session tally |
 | `lib/calendar.ts` | 107 | The Google Calendar link and the `.ics` file |
 | `lib/paused.ts` | 39 | The voice switch and the sample board |
 | `app/stats/page.tsx`, `lib/stats.ts`, `proxy.ts` | | The password-protected `/stats` dashboard |
-| `app/globals.css` | 2309 | "The lantern board": every style and animation |
+| `app/globals.css` | 2326 | "The lantern board": every style and animation |
 
 ### `app/api/token/route.ts`
 

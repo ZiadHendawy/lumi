@@ -149,7 +149,7 @@ your branch ──pull request──▶ review, merge to main
 | Provider keys and `DATABASE_URL` | the agent's LiveKit Cloud secrets (`lk agent update-secrets`) | the deployed agent |
 | `LIVEKIT_URL`, `LIVEKIT_API_KEY`, `LIVEKIT_API_SECRET`, `LIVEKIT_AGENT_ID`, plus `GROQ_API_KEY`, `GEMINI_API_KEY`, `TEST_DATABASE_URL` for evals | GitHub → **Settings → Secrets and variables → Actions** | CI's agent deploy and evals |
 
-**Pausing voice on the live site** (maintainer only): set `NEXT_PUBLIC_VOICE_PAUSED=1` in Vercel's environment variables and redeploy. The page then shows a sample board and a dimmed lantern, never connects, and `/api/token` refuses, so visitors use none of the free-tier quota. Delete the variable and redeploy to turn voice back on.
+**Pausing voice on the live site** (maintainer only): set `NEXT_PUBLIC_VOICE_PAUSED=1` in Vercel's environment variables and redeploy. The page then shows a sample board with a "Voice is paused for now" popup, never connects, and `/api/token` refuses, so visitors use none of the free-tier quota. Delete the variable and redeploy to turn voice back on.
 
 ## Running your own copy (forks)
 
